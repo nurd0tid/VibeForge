@@ -46,7 +46,7 @@ import {
   TaskDialog,
 } from "@/components/dialogs";
 import { GoogleWorkspaceModal } from "@/components/google-workspace-modal";
-import { FigmaComingSoonModal } from "@/components/figma-coming-soon";
+import { FigmaLiveModal } from "@/components/figma-live-modal";
 import { ConnectedFilesPanel } from "@/components/connected-files-panel";
 import { AiBrainstormPanel } from "@/components/ai-brainstorm-panel";
 import { useLocalTheme } from "@/components/providers";
@@ -790,9 +790,10 @@ export function Dashboard() {
         onOpenChange={setGoogleWorkspaceOpen}
         api={api}
       />
-      <FigmaComingSoonModal
+      <FigmaLiveModal
         open={figmaOpen}
         onOpenChange={setFigmaOpen}
+        api={api}
         project={project}
       />
     </div>

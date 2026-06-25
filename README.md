@@ -19,6 +19,7 @@ UI berjalan di `http://127.0.0.1:3456`. Orchestrator lokal berjalan di `http://1
   - AI Assistant per connected file dengan preview/action history;
   - action history per task.
 - Google Workspace modal adalah login-first: lihat file Drive, buat Docs/Sheets/Slides dari prompt, atau import file lokal ke Google Drive.
+- Figma Live modal: connect OAuth/PAT, validasi/open Figma URL, copy file key, lalu attach ke task untuk AI context/action history.
 
 ## Prasyarat
 
@@ -66,7 +67,7 @@ Isi `.env.local`:
 NOCODB_BASE_URL=https://app.nocodb.com
 NOCODB_WORKSPACE_ID=wfost257
 NOCODB_BASE_ID=pfzvil4cr8t2529
-NOCODB_API_TOKEN=your-new-server-side-pat
+NOCODB_API_TOKEN=<new_server_side_pat>
 ```
 
 Jalankan:
@@ -88,23 +89,13 @@ Migration idempotent dan hanya membuat tabel berprefix `vk_`.
 7. Jalankan Next, Selected, atau All.
 8. Review diff, request changes, atau explicit merge.
 
-## Google/Figma Connected Files workflow
+## Google Workspace dan Figma setup
 
-KarsaDesk bukan editor Word/Spreadsheet/Figma buatan sendiri. File asli tetap dibuka di `docs.google.com`, `sheets.google.com`, `slides.google.com`, atau `figma.com`.
+KarsaDesk memakai file asli user, bukan clone editor palsu. Google Docs/Sheets/Slides tetap dibuka di Google Workspace, dan Figma tetap dibuka di Figma. KarsaDesk bertugas menjadi agent layer: login/connect, attach file ke task, baca metadata/context, membuat prompt/action preview, menyimpan history, dan mengaitkan hasilnya ke kanban.
 
-1. Siapkan env Google/Figma di `.env.local`, restart `npm run dev`.
-2. Buat/pilih task.
-3. Buka task inspector.
-4. Di **Connected Files**, klik **Connect** Google/Figma.
-5. Untuk Google, search Drive lalu attach Docs/Sheets/Slides.
-6. Untuk Figma, connect OAuth atau masukkan PAT lokal, lalu paste URL Figma dan klik **Attach original file**.
-7. Klik **Open** untuk mengedit di aplikasi asli.
-8. Tulis instruksi di **AI Assistant**, lalu klik **Ask AI / prepare preview**.
-9. Riwayat action tersimpan di task.
+Secret provider hanya dipakai server-side oleh orchestrator lokal. Jangan pakai prefix `NEXT_PUBLIC_*` untuk token/client secret.
 
-MVP saat ini sudah memiliki account status, OAuth/PAT endpoint, token lokal terenkripsi, Google Drive listing, Google export context, Figma metadata/tree read, metadata sync, tombol Open, dan action history. Perubahan langsung ke file asli masih dibuat sebagai preview `needs_confirmation`; apply adapters per Docs/Sheets/Slides dan Figma Plugin bridge adalah tahap berikutnya supaya tidak merusak file user tanpa konfirmasi.
-
-Env yang nanti dipakai:
+Isi `.env.local`:
 
 ```env
 GOOGLE_CLIENT_ID=
@@ -116,15 +107,43 @@ FIGMA_OAUTH_REDIRECT_URI=http://127.0.0.1:4317/api/connect/figma/callback
 FIGMA_PERSONAL_ACCESS_TOKEN=
 ```
 
-### Google OAuth setup
+Setelah mengubah env, restart dev server:
+
+```bash
+npm run dev
+```
+
+### Google Cloud OAuth setup
+
+Gunakan langkah ini supaya tombol **Google Docs** dan **Connected Files → Google** bisa login ke Drive user.
 
 Di Google Cloud Console:
 
-1. Buat OAuth Client untuk aplikasi desktop/web lokal.
-2. Tambahkan authorized redirect URI:
+1. Buka Google Cloud Console.
+2. Buat atau pilih project.
+3. Aktifkan API berikut:
+   - Google Drive API
+   - Google Docs API
+   - Google Sheets API
+   - Google Slides API
+4. Buka **APIs & Services → OAuth consent screen**.
+5. Pilih mode sesuai kebutuhan:
+   - **Testing** untuk lokal/private.
+   - Tambahkan akun Google kamu sebagai test user jika masih testing.
+6. Buka **Credentials → Create Credentials → OAuth client ID**.
+7. Pilih **Web application**.
+8. Tambahkan Authorized JavaScript origins:
+   - `http://127.0.0.1:3456`
+   - `http://localhost:3456`
+9. Tambahkan Authorized redirect URI:
    `http://127.0.0.1:4317/api/connect/google/callback`
-3. Isi `GOOGLE_CLIENT_ID` dan `GOOGLE_CLIENT_SECRET`.
-4. Pastikan API yang dibutuhkan aktif: Google Drive API, Google Docs API, Google Sheets API, Google Slides API.
+10. Copy client ID dan client secret ke `.env.local`:
+
+```env
+GOOGLE_CLIENT_ID=<google_client_id>
+GOOGLE_CLIENT_SECRET=<google_client_secret>
+GOOGLE_OAUTH_REDIRECT_URI=http://127.0.0.1:4317/api/connect/google/callback
+```
 
 Scope yang diminta KarsaDesk:
 
@@ -133,18 +152,123 @@ Scope yang diminta KarsaDesk:
 - `spreadsheets`
 - `presentations`
 
-Token disimpan terenkripsi di SQLite lokal (`VK_DATA_DIR`) dan tidak masuk browser bundle/NocoDB.
+Token disimpan lokal di SQLite runtime (`VK_DATA_DIR`) dan tidak masuk browser bundle/NocoDB.
 
-### Figma setup
+### Cara login dan memakai Google Workspace
 
-Pilihan development paling cepat:
+Ada dua pintu Google:
 
-1. Buat Personal Access Token dari akun Figma.
-2. Isi `FIGMA_PERSONAL_ACCESS_TOKEN` atau paste token di panel Connected Files.
-3. Attach URL Figma di task, lalu klik **Sync** untuk metadata.
+1. Header **Google Docs** untuk document workflow utama.
+2. Task inspector **Connected Files** untuk attach file Google ke task tertentu.
 
-OAuth Figma juga disiapkan dengan redirect:
-`http://127.0.0.1:4317/api/connect/figma/callback`
+Workflow header **Google Docs**:
+
+1. Klik **Google Docs** di header.
+2. Klik login/connect Google jika status belum connected.
+3. Setelah OAuth selesai, kembali ke KarsaDesk.
+4. Search Google Docs/Sheets/Slides dari Drive.
+5. Pilih file untuk dibuka di editor Google asli.
+6. Buat file baru dari prompt jika ingin mulai dari nol.
+7. Import `.docx/.xlsx/.pptx` lokal ke Google Drive agar menjadi Google Docs/Sheets/Slides asli.
+
+Workflow per task:
+
+1. Buat atau pilih task di kanban.
+2. Buka task inspector.
+3. Di **Connected Files**, klik **Connect Google**.
+4. Search file Drive atau paste URL Google Docs/Sheets/Slides.
+5. Klik attach.
+6. Klik **Open** untuk edit di Google asli.
+7. Pakai **AI Assistant** di connected file untuk membuat preview/action history.
+
+### Figma setup — live
+
+Figma sudah live di KarsaDesk untuk connect, attach file, baca metadata/tree context, membuka file asli, dan mengaitkan AI action ke task. Untuk keamanan, secret tetap server-side dan perubahan destruktif tetap harus lewat review/confirmation.
+
+Ada dua cara connect Figma.
+
+#### Opsi A — Personal Access Token, paling cepat untuk lokal
+
+1. Buka Figma.
+2. Masuk ke **Settings → Security**.
+3. Buat **Personal access token**.
+4. Pilih scope/read permission yang cukup untuk file metadata/content.
+5. Gunakan salah satu cara:
+   - isi env:
+
+     ```env
+     FIGMA_PERSONAL_ACCESS_TOKEN=<figma_personal_access_token>
+     ```
+
+   - atau paste PAT langsung di modal **Figma** / task inspector **Connected Files**.
+
+6. Restart `npm run dev` jika token dimasukkan lewat `.env.local`.
+7. Klik **Figma** di header, lalu **Connect PAT**.
+
+#### Opsi B — Figma OAuth
+
+1. Buka Figma Developer / OAuth app settings.
+2. Buat OAuth app.
+3. Tambahkan redirect URI:
+   `http://127.0.0.1:4317/api/connect/figma/callback`
+4. Copy client ID dan client secret ke `.env.local`:
+
+```env
+FIGMA_CLIENT_ID=<figma_client_id>
+FIGMA_CLIENT_SECRET=<figma_client_secret>
+FIGMA_OAUTH_REDIRECT_URI=http://127.0.0.1:4317/api/connect/figma/callback
+```
+
+5. Restart `npm run dev`.
+6. Klik **Figma** di header.
+7. Klik **Connect OAuth**.
+8. Selesaikan login Figma di browser.
+
+Scope Figma yang dipakai:
+
+- `file_metadata:read`
+- `file_content:read`
+
+### Cara memakai Figma di KarsaDesk
+
+Workflow header **Figma**:
+
+1. Klik **Figma** di header.
+2. Connect OAuth atau PAT.
+3. Paste URL Figma:
+   - `https://www.figma.com/design/<fileKey>/...`
+   - `https://www.figma.com/file/<fileKey>/...`
+   - `https://www.figma.com/proto/<fileKey>/...`
+4. KarsaDesk membaca file key dari URL.
+5. Klik **Open Figma** untuk membuka file asli.
+6. Copy file key jika perlu.
+
+Workflow per task:
+
+1. Buat atau pilih task desain.
+2. Buka task inspector.
+3. Di **Connected Files**, connect Figma OAuth/PAT jika belum connected.
+4. Paste URL Figma dan klik **Attach original file**.
+5. Klik **Sync** untuk metadata.
+6. Klik **Open** untuk edit file asli di Figma.
+7. Pakai **AI Assistant** untuk instruksi desain, review context, dan action history.
+
+Yang sudah live:
+
+- Account status untuk Figma.
+- Figma OAuth endpoint.
+- Figma PAT connect lokal.
+- Attach Figma URL/file key ke task.
+- Sync metadata via Figma REST API.
+- Read Figma file summary/tree context.
+- Tombol open ke Figma asli.
+- AI action history per task/connected file.
+
+Yang tetap dijaga:
+
+- KarsaDesk tidak menaruh Figma token di browser bundle.
+- KarsaDesk tidak auto-publish perubahan desain destruktif tanpa review.
+- Jika nanti ada Figma plugin bridge/apply adapter, apply tetap harus lewat permission/confirmation.
 
 ## Google Workspace modal
 
@@ -155,6 +279,17 @@ Klik **Google Docs** di header untuk workflow dokumen utama. KarsaDesk tidak lag
 3. Buat file baru dari prompt langsung di Google Docs/Sheets/Slides.
 4. Jika punya file lokal `.docx/.xlsx/.pptx`, gunakan **Import file to Google** supaya file dikirim ke Google Drive dan dikonversi menjadi file Google asli.
 5. Buka file di editor Google asli, lalu hubungkan ke task jika ingin AI action history/review.
+
+## Connected Files action behavior
+
+Connected file AI action saat ini bersifat supervised:
+
+- membaca metadata/context file;
+- membuat preview/action history;
+- mengaitkan hasil ke task;
+- tidak menulis destruktif ke Google/Figma tanpa confirmation/apply adapter.
+
+Ini sengaja dibuat begitu supaya file kuliah, Google Workspace, dan Figma user tidak rusak oleh auto-apply.
 
 ## Data lokal
 
@@ -193,4 +328,9 @@ npm run nocodb:setup
 - **No providers/models:** login provider di OpenCode lalu refresh project.
 - **Cannot create session:** source worktree harus clean dan target branch harus sedang checked out.
 - **Google/Figma belum bisa connect:** cek env OAuth/PAT, restart dev server, lalu cek status di Connected Files.
-- **AI file action butuh confirmation:** ini normal; MVP membaca konteks dan menyiapkan preview, tidak menulis ke file asli tanpa apply adapter/konfirmasi.
+- **Google OAuth redirect mismatch:** pastikan redirect URI persis `http://127.0.0.1:4317/api/connect/google/callback`.
+- **Figma OAuth redirect mismatch:** pastikan redirect URI persis `http://127.0.0.1:4317/api/connect/figma/callback`.
+- **Figma PAT gagal:** cek token masih aktif dan punya akses ke file yang ditempel.
+- **Figma file tidak terbaca:** pastikan URL mengandung `/design/<fileKey>/`, `/file/<fileKey>/`, `/proto/<fileKey>/`, atau `/board/<fileKey>/`, dan akun/token punya permission ke file.
+- **AI chat `insufficient balance` / `invalid api key`:** itu error provider OpenCode. Cek billing/credit/API key provider di OpenCode, lalu refresh provider/model.
+- **AI file action butuh confirmation:** ini normal; KarsaDesk membaca konteks dan menyiapkan preview, tidak menulis ke file asli tanpa apply adapter/konfirmasi.

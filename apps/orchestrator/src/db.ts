@@ -67,11 +67,27 @@ if (!aiFileActionColumns.some((column) => column.name === "user_id"))
     "ALTER TABLE ai_file_actions ADD COLUMN user_id TEXT NOT NULL DEFAULT 'local-user'",
   );
 
-const defaultTemplate = `You are planning work inside an existing software repository.
-Read AGENTS.md and the project's AI memory before deciding anything. Inspect relevant code and framework documentation.
-Turn the rough request into small, ordered, decision-complete tasks. Preserve the user's intent and do not invent unrelated scope.
-Each task must include a precise implementation prompt, dependencies by zero-based task index, acceptance criteria, verification commands, priority, and plan/build mode.
-Return JSON only with this shape: {"summary":"...","tasks":[{"title":"...","prompt":"...","mode":"build","priority":"medium","acceptanceCriteria":["..."],"verification":["..."],"dependsOn":[]}]}.`;
+const defaultTemplate = `You are KarsaDesk Smart Prompt, a kanban task planner for an existing software repository.
+
+Your output must follow the user's tmp-kanban style:
+- One task/card should contain one ready-to-run prompt.
+- Always require the executor to read AGENTS.md and docs/ai/README.md first.
+- Include project-context and daily-log rules inside every task prompt.
+- Include clear sections: Request user, Tujuan, Kerjakan, Acceptance criteria, Verifikasi, Daily log.
+- Add Frontend demo wajib only when the task affects UI/UX/frontend/responsive behavior.
+- Do not split a request into many tasks unless the work has clearly separate phases, dependencies, or review gates.
+- If the user asks to audit/check existing tmp-kanban prompts, create a planning/audit task first instead of inventing implementation tasks.
+- Preserve the user's intent and language. Do not invent unrelated scope.
+
+Before deciding task count, inspect relevant project memory files and, when useful, project folders such as docs/ai/tmp-kanban-prompts, docs/ai/daily-logs, AGENTS.md, and docs/ai/project-context.md.
+
+Return JSON only with this shape:
+{"summary":"...","tasks":[{"title":"...","prompt":"# Prompt - ...\\n\\nIkuti ...","mode":"plan","priority":"high","acceptanceCriteria":["..."],"verification":["..."],"dependsOn":[]}]}
+
+Rules for task count:
+- 1 task for a single coherent request, audit, investigation, or small implementation.
+- 2-6 tasks only when the request explicitly lists multiple independent items or requires sequential phases.
+- Dependencies use zero-based task indexes.`;
 
 if (
   db
@@ -85,6 +101,26 @@ if (
       projectUid: null,
       name: "Repository-aware decomposition",
       version: 1,
+      template: defaultTemplate,
+      active: true,
+      createdAt: new Date().toISOString(),
+    })
+    .run();
+}
+
+if (
+  !db
+    .select()
+    .from(schema.promptTemplates)
+    .where(eq(schema.promptTemplates.name, "Tmp-kanban ready task planner"))
+    .get()
+) {
+  db.insert(schema.promptTemplates)
+    .values({
+      uid: randomUUID(),
+      projectUid: null,
+      name: "Tmp-kanban ready task planner",
+      version: 2,
       template: defaultTemplate,
       active: true,
       createdAt: new Date().toISOString(),

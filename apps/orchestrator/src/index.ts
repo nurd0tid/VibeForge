@@ -560,6 +560,49 @@ app.get("/api/projects/:projectUid/opencode", async (request) => {
   return { probe, providers: await openCode.discover(project.localPath) };
 });
 
+async function smartPromptContext(projectUid: string) {
+  const project = getProject(projectUid);
+  if (!project) return "Project not found.";
+  const lines: string[] = [];
+  lines.push(
+    project.memoryFiles.length
+      ? `Project memory files: ${project.memoryFiles.join(", ")}.`
+      : "No standard project memory files were detected.",
+  );
+  const existingTasks = listAllTasks(projectUid);
+  lines.push(
+    existingTasks.length
+      ? `Existing KarsaDesk tasks: ${existingTasks
+          .slice(0, 20)
+          .map((task) => `KD-${task.number} [${task.status}] ${task.title}`)
+          .join(
+            "; ",
+          )}${existingTasks.length > 20 ? `; ... ${existingTasks.length - 20} more` : ""}.`
+      : "Existing KarsaDesk tasks: none.",
+  );
+  const tmpKanbanDir = path.join(
+    project.localPath,
+    "docs/ai/tmp-kanban-prompts",
+  );
+  try {
+    const entries = await fs.promises.readdir(tmpKanbanDir, {
+      withFileTypes: true,
+    });
+    const files = entries
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+      .map((entry) => entry.name)
+      .sort();
+    lines.push(
+      files.length
+        ? `Existing tmp-kanban prompt files (${files.length}): ${files.slice(0, 30).join(", ")}${files.length > 30 ? `, ... ${files.length - 30} more` : ""}.`
+        : "Existing tmp-kanban prompt files: none.",
+    );
+  } catch {
+    lines.push("Existing tmp-kanban prompt files: directory not found.");
+  }
+  return lines.join("\n");
+}
+
 app.post("/api/projects/:projectUid/smart-prompt", async (request) => {
   const { projectUid } = z
     .object({ projectUid: z.string().uuid() })
@@ -573,9 +616,7 @@ app.post("/api/projects/:projectUid/smart-prompt", async (request) => {
     .parse(request.body);
   const project = getProject(projectUid);
   if (!project) throw app.httpErrors.notFound("Project not found");
-  const context = project.memoryFiles.length
-    ? `Project memory files: ${project.memoryFiles.join(", ")}.`
-    : "No standard project memory files were detected.";
+  const context = await smartPromptContext(projectUid);
   const prompt = `${activeTemplate()}\n\n${context}\n\nRough request:\n${input.roughPrompt}`;
   if (!input.providerId || !input.modelId) {
     return fallbackSmartPrompt(

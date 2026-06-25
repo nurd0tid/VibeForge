@@ -21,6 +21,7 @@ import type {
   SmartPromptResult,
   Task,
 } from "@vk/contracts";
+import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
 import type { ApiClient } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -758,7 +759,7 @@ export function SmartPromptDialog({
   }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[min(820px,calc(100vw-24px))]">
+      <DialogContent className="w-[min(1040px,calc(100vw-24px))]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="size-5 text-accent" /> Smart prompt
@@ -843,45 +844,81 @@ export function SmartPromptDialog({
               elapsed={thinkingElapsed}
               busy={busy}
             />
-            <div className="scrollbar-thin max-h-[52vh] space-y-2 overflow-auto pr-1">
+            <div className="scrollbar-thin max-h-[56vh] space-y-3 overflow-auto pr-1">
               {draft.tasks.map((task, index) => (
                 <div
                   key={index}
-                  className="rounded-xl border border-border bg-panel p-3"
+                  className="rounded-2xl border border-border bg-panel p-3 shadow-sm"
                 >
-                  <div className="mb-2 flex items-center gap-2">
-                    <span className="grid size-6 place-items-center rounded-full bg-accent/10 font-mono text-[10px] text-accent">
+                  <div className="mb-3 flex items-start gap-2">
+                    <span className="mt-1 grid size-7 shrink-0 place-items-center rounded-full bg-accent/10 font-mono text-[10px] text-accent">
                       {index + 1}
                     </span>
-                    <input
-                      className={`${field} h-8 font-medium`}
-                      value={task.title}
+                    <div className="min-w-0 flex-1">
+                      <input
+                        className={`${field} h-10 text-base font-semibold`}
+                        value={task.title}
+                        onChange={(e) =>
+                          updateDraft(index, "title", e.target.value)
+                        }
+                      />
+                      <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-muted">
+                        <span className="rounded bg-panel-strong px-2 py-1 uppercase">
+                          {task.mode}
+                        </span>
+                        <span className="rounded bg-panel-strong px-2 py-1 capitalize">
+                          {task.priority}
+                        </span>
+                        {task.dependsOn.length > 0 && (
+                          <span className="rounded bg-panel-strong px-2 py-1">
+                            Depends on{" "}
+                            {task.dependsOn
+                              .map((value) => value + 1)
+                              .join(", ")}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-border bg-background/60 p-4">
+                    <div className="prose prose-sm max-w-none text-[13px] leading-6 dark:prose-invert prose-headings:mb-2 prose-headings:mt-4 prose-h1:text-lg prose-h2:text-sm prose-ul:my-2 prose-li:my-0">
+                      <ReactMarkdown>{task.prompt}</ReactMarkdown>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid gap-2 md:grid-cols-2">
+                    <div className="rounded-lg border border-border bg-elevated p-3">
+                      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted">
+                        Acceptance
+                      </p>
+                      <ul className="space-y-1 text-[11px] leading-4 text-muted">
+                        {task.acceptanceCriteria.map((item) => (
+                          <li key={item}>- {item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="rounded-lg border border-border bg-elevated p-3">
+                      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted">
+                        Verification
+                      </p>
+                      <ul className="space-y-1 text-[11px] leading-4 text-muted">
+                        {task.verification.map((item) => (
+                          <li key={item}>- {item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                  <details className="mt-3 rounded-lg border border-border bg-elevated">
+                    <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-muted">
+                      Edit raw prompt markdown
+                    </summary>
+                    <textarea
+                      className={`${field} min-h-56 rounded-t-none border-0 bg-panel text-xs`}
+                      value={task.prompt}
                       onChange={(e) =>
-                        updateDraft(index, "title", e.target.value)
+                        updateDraft(index, "prompt", e.target.value)
                       }
                     />
-                  </div>
-                  <textarea
-                    className={`${field} min-h-20 text-xs`}
-                    value={task.prompt}
-                    onChange={(e) =>
-                      updateDraft(index, "prompt", e.target.value)
-                    }
-                  />
-                  <div className="mt-2 flex gap-2 text-[10px] text-muted">
-                    <span className="rounded bg-panel-strong px-2 py-1 uppercase">
-                      {task.mode}
-                    </span>
-                    <span className="rounded bg-panel-strong px-2 py-1 capitalize">
-                      {task.priority}
-                    </span>
-                    {task.dependsOn.length > 0 && (
-                      <span className="rounded bg-panel-strong px-2 py-1">
-                        Depends on{" "}
-                        {task.dependsOn.map((value) => value + 1).join(", ")}
-                      </span>
-                    )}
-                  </div>
+                  </details>
                 </div>
               ))}
             </div>

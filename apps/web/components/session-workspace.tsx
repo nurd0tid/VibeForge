@@ -156,9 +156,9 @@ function EventTimeline({
   return (
     <section className="rounded-xl border border-border bg-[#080b10] text-slate-200">
       <header className="flex items-center justify-between border-b border-white/10 px-3 py-2">
-        <span className="flex items-center gap-2 text-xs font-semibold">
+        <span className="flex min-w-0 items-center gap-2 text-xs font-semibold">
           <TerminalSquare className="size-3.5 text-accent" />
-          Run timeline
+          <span className="truncate">Thinking & tool timeline</span>
         </span>
         <span className="font-mono text-[10px] text-slate-500">
           {timeline.length} event{timeline.length === 1 ? "" : "s"}
@@ -176,7 +176,7 @@ function EventTimeline({
             <div
               key={event.uid}
               className={cn(
-                "grid grid-cols-[58px_18px_1fr] gap-2 rounded px-1 py-0.5",
+                "grid grid-cols-[52px_18px_minmax(0,1fr)] gap-2 rounded px-1 py-0.5 sm:grid-cols-[58px_18px_minmax(0,1fr)]",
                 active && "bg-accent/10",
               )}
             >
@@ -263,6 +263,12 @@ export function SessionWorkspace({
     setLogPage(1);
     setHasMoreLogs(logData.hasMore);
   }
+  async function refreshDiffSnapshot() {
+    const diffData = await api.get<DiffData>(
+      `/api/sessions/${session.uid}/diff?page=1&pageSize=1200`,
+    );
+    setDiff(diffData);
+  }
   async function loadOlderEvents() {
     const next = eventPage + 1;
     const data = await api.get<Paginated<NormalizedEvent>>(
@@ -300,13 +306,27 @@ export function SessionWorkspace({
     socket.addEventListener("message", (event) => {
       const value = JSON.parse(event.data) as NormalizedEvent;
       setEvents((current) => [...current, value]);
-      if (["process.exit", "session.status"].includes(value.type)) {
+      if (
+        ["tool.result", "process.exit", "session.status", "error"].includes(
+          value.type,
+        )
+      ) {
+        void refreshDiffSnapshot();
+      }
+      if (["process.exit", "session.status", "error"].includes(value.type)) {
         void load();
         void onRefresh();
       }
     });
-    return () => socket.close();
-  }, [api, session.uid]);
+    const timer = window.setInterval(() => {
+      if (["running", "review", "paused"].includes(session.status))
+        void refreshDiffSnapshot();
+    }, 5000);
+    return () => {
+      window.clearInterval(timer);
+      socket.close();
+    };
+  }, [api, session.uid, session.status]);
   const tabs: Array<{ id: Tab; label: string; icon: typeof Bot }> = [
     { id: "console", label: "Agent", icon: Bot },
     {
@@ -418,11 +438,11 @@ export function SessionWorkspace({
   }
   return (
     <div className="flex h-screen min-h-0 flex-col bg-background">
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-panel px-3">
+      <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-b border-border bg-panel px-3 py-2 sm:gap-3">
         <Button variant="ghost" size="icon" onClick={onBack}>
           <ArrowLeft className="size-4" />
         </Button>
-        <div className="min-w-0">
+        <div className="min-w-[180px] flex-1">
           <div className="flex items-center gap-2">
             <h1 className="truncate text-sm font-semibold">{session.name}</h1>
             <span
@@ -447,25 +467,28 @@ export function SessionWorkspace({
             {session.branch} · {session.providerId}/{session.modelId}
           </p>
         </div>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
           <Button
             variant="secondary"
             size="sm"
             onClick={() => void openInCode()}
           >
-            <Code2 className="size-3.5" /> Open in VS Code
+            <Code2 className="size-3.5" />
+            <span className="hidden sm:inline">Open in VS Code</span>
           </Button>
           <Button variant="secondary" size="sm" onClick={() => void load()}>
-            <RefreshCw className="size-3.5" /> Refresh
+            <RefreshCw className="size-3.5" />
+            <span className="hidden sm:inline">Refresh</span>
           </Button>
           {session.status === "running" && (
             <Button variant="danger" size="sm" onClick={() => void cancel()}>
-              <CircleStop className="size-3.5" /> Stop
+              <CircleStop className="size-3.5" />
+              <span className="hidden sm:inline">Stop</span>
             </Button>
           )}
         </div>
       </header>
-      <div className="flex h-11 shrink-0 items-center gap-1 border-b border-border bg-panel px-3">
+      <div className="scrollbar-thin flex min-h-11 shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-panel px-3 py-1">
         {tabs.map((item) => {
           const Icon = item.icon;
           return (
@@ -473,7 +496,7 @@ export function SessionWorkspace({
               key={item.id}
               onClick={() => setTab(item.id)}
               className={cn(
-                "flex h-8 items-center gap-2 rounded-md px-3 text-xs text-muted transition hover:bg-panel-strong hover:text-foreground",
+                "flex h-8 shrink-0 items-center gap-2 rounded-md px-3 text-xs text-muted transition hover:bg-panel-strong hover:text-foreground",
                 tab === item.id && "bg-panel-strong text-foreground",
               )}
             >

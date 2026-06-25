@@ -20,6 +20,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   Bot,
+  Ban,
   Check,
   CircleDot,
   Clock3,
@@ -31,6 +32,7 @@ import {
   ListChecks,
   ShieldAlert,
   TerminalSquare,
+  XCircle,
 } from "lucide-react";
 import type { Task } from "@vk/contracts";
 import { cn } from "@/lib/utils";
@@ -47,7 +49,15 @@ const columns = [
   },
   { id: "review", title: "Review", icon: GitBranch, dot: "text-violet-500" },
   { id: "done", title: "Done", icon: Check, dot: "text-emerald-500" },
+  { id: "failed", title: "Failed", icon: XCircle, dot: "text-danger" },
+  { id: "cancelled", title: "Cancelled", icon: Ban, dot: "text-muted" },
 ] as const;
+
+type ColumnId = (typeof columns)[number]["id"];
+
+function normalizeStatus(status: Task["status"]): ColumnId {
+  return status;
+}
 
 function BoardColumn({
   column,
@@ -58,20 +68,23 @@ function BoardColumn({
   tasks: Task[];
   children: React.ReactNode;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: column.id });
+  const { setNodeRef, isOver } = useDroppable({
+    id: column.id,
+    data: { type: "column", status: column.id },
+  });
   const Icon = column.icon;
   return (
     <section
       ref={setNodeRef}
       className={cn(
-        "flex min-h-[420px] w-[292px] shrink-0 flex-col rounded-xl border border-border bg-panel/70 transition-colors",
+        "flex h-full min-h-[360px] w-[min(84vw,300px)] shrink-0 flex-col rounded-xl border border-border bg-panel/70 transition-colors sm:w-[292px]",
         isOver && "border-accent bg-accent/5",
       )}
     >
-      <header className="flex h-11 items-center justify-between border-b border-border px-3">
-        <div className="flex items-center gap-2 text-sm font-medium">
+      <header className="flex min-h-11 items-center justify-between gap-2 border-b border-border px-3 py-2">
+        <div className="flex min-w-0 items-center gap-2 text-sm font-medium">
           <Icon className={cn("size-4", column.dot)} />
-          <span>{column.title}</span>
+          <span className="truncate">{column.title}</span>
           <span className="rounded-full bg-panel-strong px-1.5 py-0.5 font-mono text-[10px] text-muted">
             {tasks.length}
           </span>
@@ -83,11 +96,11 @@ function BoardColumn({
           )}
         />
       </header>
-      <div className="scrollbar-thin flex flex-1 flex-col gap-2 overflow-y-auto p-2">
+      <div className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2">
         {children}
         {!tasks.length && (
           <div className="grid min-h-24 place-items-center rounded-lg border border-dashed border-border text-xs text-muted">
-            Drop tasks here
+            Drag tasks here
           </div>
         )}
       </div>
@@ -115,7 +128,10 @@ function TaskCard({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: task.uid, data: { status: task.status } });
+  } = useSortable({
+    id: task.uid,
+    data: { type: "task", status: normalizeStatus(task.status) },
+  });
   const priorityClass =
     task.priority === "urgent"
       ? "bg-rose-500"
@@ -167,8 +183,9 @@ function TaskCard({
     <article
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
+      onClick={onOpen}
       className={cn(
-        "group relative rounded-lg border bg-elevated p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-md",
+        "group relative cursor-pointer rounded-lg border bg-elevated p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-md",
         selected && "border-accent ring-1 ring-accent/30",
         isDragging && "z-20 opacity-55 shadow-xl",
       )}
@@ -178,29 +195,30 @@ function TaskCard({
           <span className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-muted">
             KD-{task.number}
           </span>
-          <span className="line-clamp-2 block text-[13px] font-medium leading-5">
+          <span className="line-clamp-2 block break-words text-[13px] font-medium leading-5">
             {task.title}
           </span>
         </button>
         <button
           {...attributes}
           {...listeners}
+          onClick={(event) => event.stopPropagation()}
           className="cursor-grab rounded p-1 text-muted opacity-0 transition group-hover:opacity-100 focus:opacity-100"
           aria-label={`Move ${task.title}`}
         >
           <GripVertical className="size-4" />
         </button>
       </div>
-      <p className="line-clamp-2 min-h-8 text-[11px] leading-4 text-muted">
+      <p className="line-clamp-2 min-h-8 break-words text-[11px] leading-4 text-muted">
         {task.refinedPrompt}
       </p>
-      <div className="mt-3 flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           <span className={cn("size-1.5 rounded-full", priorityClass)} />
           <span className="text-[10px] capitalize text-muted">
             {task.priority}
           </span>
-          <span className="rounded bg-panel-strong px-1.5 py-0.5 font-mono text-[9px] uppercase text-muted">
+          <span className="max-w-full rounded bg-panel-strong px-1.5 py-0.5 font-mono text-[9px] uppercase text-muted">
             {task.mode}
           </span>
         </div>
@@ -286,11 +304,9 @@ export function KanbanBoard({
       Object.fromEntries(
         columns.map((column) => [
           column.id,
-          tasks.filter((task) =>
-            column.id === "waiting_approval"
-              ? ["waiting_approval", "failed"].includes(task.status)
-              : task.status === column.id,
-          ),
+          tasks
+            .filter((task) => normalizeStatus(task.status) === column.id)
+            .sort((a, b) => a.sortOrder - b.sortOrder),
         ]),
       ),
     [tasks],
@@ -300,16 +316,31 @@ export function KanbanBoard({
     const activeTask = tasks.find((task) => task.uid === event.active.id);
     if (!activeTask || !event.over) return;
     const overTask = tasks.find((task) => task.uid === event.over!.id);
-    const targetStatus = (overTask?.status || event.over.id) as Task["status"];
-    const normalizedStatus =
-      targetStatus === "failed" ? "waiting_approval" : targetStatus;
-    const targetTasks = grouped[normalizedStatus] || [];
-    const index = overTask
-      ? targetTasks.findIndex((task) => task.uid === overTask.uid)
-      : targetTasks.length;
-    const previous = targetTasks[index - 1]?.sortOrder || 0;
-    const next = targetTasks[index]?.sortOrder || previous + 2000;
-    onMove(activeTask, normalizedStatus, previous + (next - previous) / 2);
+    const overColumn = columns.find((column) => column.id === event.over?.id);
+    const targetStatus = (
+      overTask ? normalizeStatus(overTask.status) : overColumn?.id
+    ) as Task["status"] | undefined;
+    if (!targetStatus) return;
+
+    const targetTasks = (grouped[targetStatus] || []).filter(
+      (task) => task.uid !== activeTask.uid,
+    );
+    let targetIndex = targetTasks.length;
+    if (overTask) {
+      const overIndex = targetTasks.findIndex(
+        (task) => task.uid === overTask.uid,
+      );
+      if (overIndex >= 0) {
+        const translated = event.active.rect.current.translated;
+        const isBelow =
+          translated &&
+          translated.top > event.over.rect.top + event.over.rect.height / 2;
+        targetIndex = overIndex + (isBelow ? 1 : 0);
+      }
+    }
+    const previous = targetTasks[targetIndex - 1]?.sortOrder || 0;
+    const next = targetTasks[targetIndex]?.sortOrder || previous + 2000;
+    onMove(activeTask, targetStatus, previous + (next - previous) / 2);
   }
 
   return (
@@ -318,7 +349,7 @@ export function KanbanBoard({
       collisionDetection={closestCorners}
       onDragEnd={handleDragEnd}
     >
-      <div className="scrollbar-thin flex h-full gap-3 overflow-x-auto p-3">
+      <div className="scrollbar-thin flex h-full min-h-0 gap-3 overflow-x-auto overflow-y-hidden p-3">
         {columns.map((column) => {
           const items = grouped[column.id] || [];
           return (

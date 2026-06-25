@@ -70,6 +70,11 @@ function stringifyDiagnostic(value: unknown) {
   }
 }
 
+function safeCompactJson(value: unknown) {
+  const text = redactSensitive(stringifyDiagnostic(value));
+  return text.length > 1400 ? `${text.slice(0, 1400)}…` : text;
+}
+
 export function providerDiagnostic(value: unknown) {
   const text = redactSensitive(stringifyDiagnostic(value)).replace(/\s+/g, " ");
   const patterns = [
@@ -313,20 +318,33 @@ export class OpenCodeAdapter implements CliAdapter {
         | {
             state?: { status?: string; title?: string; output?: string };
             tool?: string;
+            input?: unknown;
           }
         | undefined;
       normalizedType =
         part?.state?.status === "completed" ? "tool.result" : "tool.start";
       title = part?.state?.title || part?.tool || "Tool";
-      body = part?.state?.output || "";
+      body =
+        part?.state?.output ||
+        (part?.input ? safeCompactJson(part.input) : "") ||
+        safeCompactJson(props);
     } else if (
       type.includes("message.part") &&
-      (props.part as { type?: string } | undefined)?.type === "text"
+      ["text", "reasoning"].includes(
+        String((props.part as { type?: string } | undefined)?.type || ""),
+      )
     ) {
-      normalizedType = "assistant.message";
-      title = "OpenCode";
+      const partType = String(
+        (props.part as { type?: string } | undefined)?.type || "",
+      );
+      normalizedType =
+        partType === "reasoning" ? "process.output" : "assistant.message";
+      title = partType === "reasoning" ? "OpenCode thinking" : "OpenCode";
       body = String(
-        (props.part as { text?: string }).text || props.delta || "",
+        (props.part as { text?: string; content?: string }).text ||
+          (props.part as { content?: string }).content ||
+          props.delta ||
+          "",
       );
       if (!body) return null;
     } else if (

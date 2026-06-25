@@ -49,6 +49,7 @@ import { GoogleWorkspaceModal } from "@/components/google-workspace-modal";
 import { FigmaLiveModal } from "@/components/figma-live-modal";
 import { ConnectedFilesPanel } from "@/components/connected-files-panel";
 import { AiBrainstormPanel } from "@/components/ai-brainstorm-panel";
+import { TaskActivityPreview } from "@/components/task-activity-preview";
 import { useLocalTheme } from "@/components/providers";
 import { SessionWorkspace } from "@/components/session-workspace";
 import { cn } from "@/lib/utils";
@@ -203,13 +204,17 @@ export function Dashboard() {
     if (!api) return;
     const optimistic = { ...task, ...values };
     setTasks((items) =>
-      items.map((item) => (item.uid === task.uid ? optimistic : item)),
+      items
+        .map((item) => (item.uid === task.uid ? optimistic : item))
+        .sort((a, b) => a.sortOrder - b.sortOrder),
     );
     if (selectedTask?.uid === task.uid) setSelectedTask(optimistic);
     try {
       const updated = await api.patch<Task>(`/api/tasks/${task.uid}`, values);
       setTasks((items) =>
-        items.map((item) => (item.uid === updated.uid ? updated : item)),
+        items
+          .map((item) => (item.uid === updated.uid ? updated : item))
+          .sort((a, b) => a.sortOrder - b.sortOrder),
       );
       if (selectedTask?.uid === updated.uid) setSelectedTask(updated);
     } catch (error) {
@@ -352,7 +357,7 @@ export function Dashboard() {
         </div>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-panel px-4">
+        <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-b border-border bg-panel px-3 py-2 sm:gap-3 sm:px-4">
           <div className="flex min-w-0 items-center gap-2">
             <FolderGit2 className="size-4 text-accent" />
             <h1 className="truncate text-sm font-semibold">
@@ -364,7 +369,7 @@ export function Dashboard() {
               </span>
             )}
           </div>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1.5 sm:gap-2">
             {project && (
               <Button
                 variant="ghost"
@@ -446,8 +451,8 @@ export function Dashboard() {
           </main>
         ) : (
           <>
-            <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-panel/60 px-3">
-              <div className="relative min-w-0 flex-1 max-w-sm">
+            <div className="flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-b border-border bg-panel/60 px-3 py-2">
+              <div className="relative min-w-[180px] max-w-sm flex-1">
                 <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted" />
                 <input
                   value={query}
@@ -485,8 +490,8 @@ export function Dashboard() {
                 <span className="hidden sm:inline">New session</span>
               </Button>
             </div>
-            <main className="flex min-h-0 flex-1">
-              <section className="min-w-0 flex-1 grid-texture">
+            <main className="flex min-h-0 flex-1 overflow-hidden">
+              <section className="min-w-0 flex-1 overflow-hidden grid-texture">
                 {loading ? (
                   <div className="grid h-full place-items-center">
                     <Loader2 className="size-6 animate-spin text-muted" />
@@ -533,7 +538,7 @@ export function Dashboard() {
                     className="fixed inset-0 z-40 bg-black/35 backdrop-blur-sm lg:hidden"
                     onClick={() => setInspectorOpen(false)}
                   />
-                  <aside className="scrollbar-thin fixed inset-y-0 right-0 z-50 w-[min(92vw,420px)] shrink-0 overflow-y-auto border-l border-border bg-elevated shadow-2xl lg:static lg:z-auto lg:w-[340px] lg:shadow-none">
+                  <aside className="scrollbar-thin fixed inset-y-0 right-0 z-50 w-[min(94vw,440px)] shrink-0 overflow-y-auto border-l border-border bg-elevated shadow-2xl lg:static lg:z-auto lg:w-[360px] lg:shadow-none xl:w-[390px]">
                     <div className="flex h-12 items-center justify-between border-b border-border px-4">
                       <span className="font-mono text-[10px] text-muted">
                         KD-{selectedTask.number}
@@ -562,7 +567,7 @@ export function Dashboard() {
                           }
                           className="w-full border-0 bg-transparent text-lg font-semibold tracking-tight outline-none"
                         />
-                        <div className="mt-2 flex gap-2">
+                        <div className="mt-2 flex flex-wrap gap-2">
                           <select
                             value={selectedTask.status}
                             onChange={(e) =>
@@ -574,9 +579,11 @@ export function Dashboard() {
                           >
                             <option value="backlog">Backlog</option>
                             <option value="ready">Ready</option>
+                            <option value="running">Running</option>
                             <option value="waiting_approval">Waiting</option>
                             <option value="review">Review</option>
                             <option value="done">Done</option>
+                            <option value="failed">Failed</option>
                             <option value="cancelled">Cancelled</option>
                           </select>
                           <span className="rounded-md bg-panel-strong px-2 py-1 font-mono text-[10px] uppercase text-muted">
@@ -631,6 +638,13 @@ export function Dashboard() {
                         </div>
                       </div>
                       <ConnectedFilesPanel api={api} task={selectedTask} />
+                      {api && (
+                        <TaskActivityPreview
+                          api={api}
+                          task={selectedTask}
+                          onOpenSession={(uid) => setWorkspaceSessionUid(uid)}
+                        />
+                      )}
                       <div>
                         <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted">
                           Execution
@@ -661,8 +675,8 @@ export function Dashboard() {
                 </>
               )}
             </main>
-            <footer className="glass flex min-h-14 shrink-0 items-center gap-2 border-t border-border px-3">
-              <div className="hidden items-center gap-2 pr-3 text-xs text-muted lg:flex">
+            <footer className="glass flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-t border-border px-3 py-2">
+              <div className="hidden min-w-0 items-center gap-2 pr-3 text-xs text-muted lg:flex">
                 <Layers3 className="size-4" />
                 <span>
                   {taskTotal} task{taskTotal === 1 ? "" : "s"}
@@ -690,7 +704,7 @@ export function Dashboard() {
               <select
                 value={sessionUid}
                 onChange={(e) => setSessionUid(e.target.value)}
-                className="h-9 min-w-0 max-w-52 rounded-lg border border-border bg-elevated px-3 text-xs outline-none"
+                className="h-9 min-w-[160px] max-w-full flex-1 rounded-lg border border-border bg-elevated px-3 text-xs outline-none sm:max-w-52 sm:flex-none"
               >
                 <option value="">Select session…</option>
                 {sessions.map((session) => (
@@ -704,7 +718,7 @@ export function Dashboard() {
                 onChange={(e) =>
                   setReviewGate(e.target.value as "each_task" | "batch_end")
                 }
-                className="h-9 min-w-0 max-w-44 rounded-lg border border-border bg-elevated px-3 text-xs outline-none"
+                className="h-9 min-w-[150px] max-w-full rounded-lg border border-border bg-elevated px-3 text-xs outline-none sm:max-w-44"
                 title="Review policy"
               >
                 <option value="each_task">Manual each task</option>
@@ -719,7 +733,7 @@ export function Dashboard() {
                   <TerminalSquare className="size-3.5" /> Workspace
                 </Button>
               )}
-              <div className="ml-auto flex gap-1.5">
+              <div className="ml-auto flex flex-wrap justify-end gap-1.5">
                 <Button
                   variant="secondary"
                   size="sm"

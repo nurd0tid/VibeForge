@@ -113,11 +113,39 @@ export const ProviderSchema = z.object({
   models: z.array(ModelSchema),
 });
 
+export const ConnectedProviderSchema = z.enum(["google", "figma"]);
+export const ConnectedFileTypeSchema = z.enum([
+  "docs",
+  "sheets",
+  "slides",
+  "figma",
+]);
+export const ConnectedAccountStatusSchema = z.enum([
+  "not_configured",
+  "not_connected",
+  "connected",
+  "token_expired",
+  "missing_permission",
+  "error",
+]);
+
+export const ConnectedAccountPublicSchema = z.object({
+  provider: ConnectedProviderSchema,
+  status: ConnectedAccountStatusSchema,
+  configured: z.boolean(),
+  connected: z.boolean(),
+  scopes: z.array(z.string()),
+  expiresAt: z.string().nullable(),
+  accountLabel: z.string().nullable(),
+  updatedAt: z.string().nullable(),
+  message: z.string().nullable(),
+});
+
 export const ConnectedFileSchema = z.object({
   uid: z.string().uuid(),
   taskUid: z.string().uuid(),
-  provider: z.enum(["google", "figma"]),
-  fileType: z.enum(["docs", "sheets", "slides", "figma"]),
+  provider: ConnectedProviderSchema,
+  fileType: ConnectedFileTypeSchema,
   externalFileId: z.string(),
   externalFileUrl: z.string().url(),
   fileName: z.string(),
@@ -131,6 +159,7 @@ export const ConnectedFileSchema = z.object({
     "inaccessible",
     "synced",
   ]),
+  connectedBy: z.string(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -139,9 +168,16 @@ export const AiFileActionSchema = z.object({
   uid: z.string().uuid(),
   taskUid: z.string().uuid(),
   connectedFileUid: z.string().uuid(),
+  userId: z.string(),
   prompt: z.string(),
   actionType: z.string(),
-  status: z.enum(["pending", "running", "success", "failed"]),
+  status: z.enum([
+    "pending",
+    "running",
+    "needs_confirmation",
+    "success",
+    "failed",
+  ]),
   resultSummary: z.string(),
   errorMessage: z.string().nullable(),
   createdAt: z.string(),
@@ -159,10 +195,41 @@ export const CreateConnectedFileSchema = ConnectedFileSchema.pick({
   fileName: true,
 });
 
+export const ConnectedProviderFileSchema = z.object({
+  provider: ConnectedProviderSchema,
+  fileType: ConnectedFileTypeSchema,
+  externalFileId: z.string(),
+  externalFileUrl: z.string().url(),
+  fileName: z.string(),
+  thumbnailUrl: z.string().nullable(),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+  status: z.string().default("synced"),
+});
+
+export const ConnectAccountStartSchema = z.object({
+  provider: ConnectedProviderSchema,
+  configured: z.boolean(),
+  url: z.string().url().nullable(),
+  message: z.string(),
+});
+
+export const FigmaPatConnectSchema = z.object({
+  token: z.string().min(10),
+});
+
+export const CreateConnectedFileFromProviderSchema = z.object({
+  provider: ConnectedProviderSchema,
+  externalFileId: z.string().min(1),
+  externalFileUrl: z.string().url().optional(),
+  fileType: ConnectedFileTypeSchema.optional(),
+  fileName: z.string().optional(),
+});
+
 export const CreateAiFileActionSchema = z.object({
   connectedFileUid: z.string().uuid(),
   prompt: z.string().min(3),
   actionType: z.string().default("plan"),
+  applyMode: z.enum(["preview", "auto_apply"]).default("preview"),
 });
 
 export const NormalizedEventSchema = z.object({
@@ -231,7 +298,11 @@ export type Session = z.infer<typeof SessionSchema>;
 export type CliProbe = z.infer<typeof CliProbeSchema>;
 export type Provider = z.infer<typeof ProviderSchema>;
 export type Model = z.infer<typeof ModelSchema>;
+export type ConnectedAccountPublic = z.infer<
+  typeof ConnectedAccountPublicSchema
+>;
 export type ConnectedFile = z.infer<typeof ConnectedFileSchema>;
+export type ConnectedProviderFile = z.infer<typeof ConnectedProviderFileSchema>;
 export type AiFileAction = z.infer<typeof AiFileActionSchema>;
 export type NormalizedEvent = z.infer<typeof NormalizedEventSchema>;
 export type SmartPromptResult = z.infer<typeof SmartPromptResultSchema>;

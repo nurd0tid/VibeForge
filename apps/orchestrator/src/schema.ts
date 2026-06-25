@@ -129,6 +129,33 @@ export const promptTemplates = sqliteTable("prompt_templates", {
   createdAt: text("created_at").notNull(),
 });
 
+export const connectedAccounts = sqliteTable("connected_accounts", {
+  uid: text("uid").primaryKey(),
+  userId: text("user_id").notNull(),
+  provider: text("provider", { enum: ["google", "figma"] }).notNull(),
+  accessToken: text("access_token").notNull(),
+  refreshToken: text("refresh_token"),
+  tokenType: text("token_type").notNull(),
+  scopes: text("scopes", { mode: "json" }).$type<string[]>().notNull(),
+  expiresAt: text("expires_at"),
+  accountLabel: text("account_label"),
+  status: text("status", {
+    enum: [
+      "not_configured",
+      "not_connected",
+      "connected",
+      "token_expired",
+      "missing_permission",
+      "error",
+    ],
+  }).notNull(),
+  metadata: text("metadata", { mode: "json" })
+    .$type<Record<string, unknown>>()
+    .notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
 export const connectedFiles = sqliteTable("task_connected_files", {
   uid: text("uid").primaryKey(),
   taskUid: text("task_uid").notNull(),
@@ -153,6 +180,7 @@ export const connectedFiles = sqliteTable("task_connected_files", {
       "synced",
     ],
   }).notNull(),
+  connectedBy: text("connected_by").notNull(),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
@@ -161,10 +189,11 @@ export const aiFileActions = sqliteTable("ai_file_actions", {
   uid: text("uid").primaryKey(),
   taskUid: text("task_uid").notNull(),
   connectedFileUid: text("connected_file_uid").notNull(),
+  userId: text("user_id").notNull(),
   prompt: text("prompt").notNull(),
   actionType: text("action_type").notNull(),
   status: text("status", {
-    enum: ["pending", "running", "success", "failed"],
+    enum: ["pending", "running", "needs_confirmation", "success", "failed"],
   }).notNull(),
   resultSummary: text("result_summary").notNull(),
   errorMessage: text("error_message"),

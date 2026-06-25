@@ -496,127 +496,138 @@ export function Dashboard() {
                 )}
               </section>
               {selectedTask && inspectorOpen && (
-                <aside className="desktop-only scrollbar-thin w-[340px] shrink-0 overflow-y-auto border-l border-border bg-elevated">
-                  <div className="flex h-12 items-center justify-between border-b border-border px-4">
-                    <span className="font-mono text-[10px] text-muted">
-                      KD-{selectedTask.number}
-                    </span>
-                    <button
-                      onClick={() => setInspectorOpen(false)}
-                      className="rounded p-1.5 text-muted hover:bg-panel-strong"
-                    >
-                      <PanelRightClose className="size-4" />
-                    </button>
-                  </div>
-                  <div className="space-y-5 p-4">
-                    <div>
-                      <input
-                        value={selectedTask.title}
-                        onChange={(e) =>
-                          setSelectedTask({
-                            ...selectedTask,
-                            title: e.target.value,
-                          })
-                        }
-                        onBlur={() =>
-                          void patchTask(selectedTask, {
-                            title: selectedTask.title,
-                          })
-                        }
-                        className="w-full border-0 bg-transparent text-lg font-semibold tracking-tight outline-none"
-                      />
-                      <div className="mt-2 flex gap-2">
-                        <select
-                          value={selectedTask.status}
+                <>
+                  <button
+                    aria-label="Close task inspector overlay"
+                    className="fixed inset-0 z-40 bg-black/35 backdrop-blur-sm lg:hidden"
+                    onClick={() => setInspectorOpen(false)}
+                  />
+                  <aside className="scrollbar-thin fixed inset-y-0 right-0 z-50 w-[min(92vw,420px)] shrink-0 overflow-y-auto border-l border-border bg-elevated shadow-2xl lg:static lg:z-auto lg:w-[340px] lg:shadow-none">
+                    <div className="flex h-12 items-center justify-between border-b border-border px-4">
+                      <span className="font-mono text-[10px] text-muted">
+                        KD-{selectedTask.number}
+                      </span>
+                      <button
+                        onClick={() => setInspectorOpen(false)}
+                        className="rounded p-1.5 text-muted hover:bg-panel-strong"
+                      >
+                        <PanelRightClose className="size-4" />
+                      </button>
+                    </div>
+                    <div className="space-y-5 p-4">
+                      <div>
+                        <input
+                          value={selectedTask.title}
                           onChange={(e) =>
-                            void patchTask(selectedTask, {
-                              status: e.target.value as Task["status"],
+                            setSelectedTask({
+                              ...selectedTask,
+                              title: e.target.value,
                             })
                           }
-                          className="rounded-md border border-border bg-panel px-2 py-1 text-[10px] uppercase"
-                        >
-                          <option value="backlog">Backlog</option>
-                          <option value="ready">Ready</option>
-                          <option value="waiting_approval">Waiting</option>
-                          <option value="review">Review</option>
-                          <option value="done">Done</option>
-                          <option value="cancelled">Cancelled</option>
-                        </select>
-                        <span className="rounded-md bg-panel-strong px-2 py-1 font-mono text-[10px] uppercase text-muted">
-                          {selectedTask.mode}
-                        </span>
-                        <span className="rounded-md bg-panel-strong px-2 py-1 text-[10px] capitalize text-muted">
-                          {selectedTask.priority}
-                        </span>
-                      </div>
-                    </div>
-                    <div>
-                      <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted">
-                        Implementation prompt
-                      </h3>
-                      <textarea
-                        value={selectedTask.refinedPrompt}
-                        onChange={(e) =>
-                          setSelectedTask({
-                            ...selectedTask,
-                            refinedPrompt: e.target.value,
-                          })
-                        }
-                        onBlur={() =>
-                          void patchTask(selectedTask, {
-                            refinedPrompt: selectedTask.refinedPrompt,
-                          })
-                        }
-                        className="min-h-44 w-full resize-y rounded-xl border border-border bg-panel p-3 text-xs leading-5 outline-none focus:border-accent"
-                      />
-                    </div>
-                    <div>
-                      <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted">
-                        Acceptance criteria
-                      </h3>
-                      <div className="space-y-2">
-                        {selectedTask.acceptanceCriteria.map((item, index) => (
-                          <div
-                            key={index}
-                            className="flex gap-2 text-xs leading-5"
+                          onBlur={() =>
+                            void patchTask(selectedTask, {
+                              title: selectedTask.title,
+                            })
+                          }
+                          className="w-full border-0 bg-transparent text-lg font-semibold tracking-tight outline-none"
+                        />
+                        <div className="mt-2 flex gap-2">
+                          <select
+                            value={selectedTask.status}
+                            onChange={(e) =>
+                              void patchTask(selectedTask, {
+                                status: e.target.value as Task["status"],
+                              })
+                            }
+                            className="rounded-md border border-border bg-panel px-2 py-1 text-[10px] uppercase"
                           >
-                            <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-success" />
-                            <span>{item}</span>
-                          </div>
-                        ))}
-                        {!selectedTask.acceptanceCriteria.length && (
+                            <option value="backlog">Backlog</option>
+                            <option value="ready">Ready</option>
+                            <option value="waiting_approval">Waiting</option>
+                            <option value="review">Review</option>
+                            <option value="done">Done</option>
+                            <option value="cancelled">Cancelled</option>
+                          </select>
+                          <span className="rounded-md bg-panel-strong px-2 py-1 font-mono text-[10px] uppercase text-muted">
+                            {selectedTask.mode}
+                          </span>
+                          <span className="rounded-md bg-panel-strong px-2 py-1 text-[10px] capitalize text-muted">
+                            {selectedTask.priority}
+                          </span>
+                        </div>
+                      </div>
+                      <div>
+                        <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted">
+                          Implementation prompt
+                        </h3>
+                        <textarea
+                          value={selectedTask.refinedPrompt}
+                          onChange={(e) =>
+                            setSelectedTask({
+                              ...selectedTask,
+                              refinedPrompt: e.target.value,
+                            })
+                          }
+                          onBlur={() =>
+                            void patchTask(selectedTask, {
+                              refinedPrompt: selectedTask.refinedPrompt,
+                            })
+                          }
+                          className="min-h-44 w-full resize-y rounded-xl border border-border bg-panel p-3 text-xs leading-5 outline-none focus:border-accent"
+                        />
+                      </div>
+                      <div>
+                        <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted">
+                          Acceptance criteria
+                        </h3>
+                        <div className="space-y-2">
+                          {selectedTask.acceptanceCriteria.map(
+                            (item, index) => (
+                              <div
+                                key={index}
+                                className="flex gap-2 text-xs leading-5"
+                              >
+                                <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-success" />
+                                <span>{item}</span>
+                              </div>
+                            ),
+                          )}
+                          {!selectedTask.acceptanceCriteria.length && (
+                            <p className="text-xs text-muted">
+                              No explicit criteria.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <ConnectedFilesPanel api={api} task={selectedTask} />
+                      <div>
+                        <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted">
+                          Execution
+                        </h3>
+                        {selectedTask.assignedSessionUid ? (
+                          <button
+                            onClick={() =>
+                              setWorkspaceSessionUid(
+                                selectedTask.assignedSessionUid,
+                              )
+                            }
+                            className="flex w-full items-center gap-2 rounded-lg border border-border bg-panel p-3 text-left text-xs hover:border-accent"
+                          >
+                            <TerminalSquare className="size-4 text-accent" />
+                            <span className="flex-1">
+                              Open assigned session
+                            </span>
+                            <GitBranch className="size-3.5 text-muted" />
+                          </button>
+                        ) : (
                           <p className="text-xs text-muted">
-                            No explicit criteria.
+                            Not assigned to a session.
                           </p>
                         )}
                       </div>
                     </div>
-                    <ConnectedFilesPanel api={api} task={selectedTask} />
-                    <div>
-                      <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted">
-                        Execution
-                      </h3>
-                      {selectedTask.assignedSessionUid ? (
-                        <button
-                          onClick={() =>
-                            setWorkspaceSessionUid(
-                              selectedTask.assignedSessionUid,
-                            )
-                          }
-                          className="flex w-full items-center gap-2 rounded-lg border border-border bg-panel p-3 text-left text-xs hover:border-accent"
-                        >
-                          <TerminalSquare className="size-4 text-accent" />
-                          <span className="flex-1">Open assigned session</span>
-                          <GitBranch className="size-3.5 text-muted" />
-                        </button>
-                      ) : (
-                        <p className="text-xs text-muted">
-                          Not assigned to a session.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </aside>
+                  </aside>
+                </>
               )}
             </main>
             <footer className="glass flex min-h-14 shrink-0 items-center gap-2 border-t border-border px-3">

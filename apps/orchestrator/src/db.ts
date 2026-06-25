@@ -5,6 +5,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type {
   AiFileAction,
+  ConnectedAccountPublic,
   ConnectedFile,
   NormalizedEvent,
   Project,
@@ -28,9 +29,10 @@ sqlite.exec(`
   CREATE TABLE IF NOT EXISTS reviews (uid TEXT PRIMARY KEY, session_uid TEXT NOT NULL, task_uid TEXT, decision TEXT NOT NULL, summary TEXT NOT NULL, comments TEXT NOT NULL, diff_hash TEXT NOT NULL, created_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS daily_logs (uid TEXT PRIMARY KEY, project_uid TEXT NOT NULL, session_uid TEXT, task_uid TEXT, date TEXT NOT NULL, prompt TEXT NOT NULL, plan TEXT NOT NULL, changed_files TEXT NOT NULL, verification TEXT NOT NULL, result TEXT NOT NULL, status TEXT NOT NULL, blockers TEXT NOT NULL, next_steps TEXT NOT NULL, mirrored_at TEXT, created_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS prompt_templates (uid TEXT PRIMARY KEY, project_uid TEXT, name TEXT NOT NULL, version INTEGER NOT NULL, template TEXT NOT NULL, active INTEGER NOT NULL, created_at TEXT NOT NULL);
-  CREATE TABLE IF NOT EXISTS task_connected_files (uid TEXT PRIMARY KEY, task_uid TEXT NOT NULL, provider TEXT NOT NULL, file_type TEXT NOT NULL, external_file_id TEXT NOT NULL, external_file_url TEXT NOT NULL, file_name TEXT NOT NULL, thumbnail_url TEXT, metadata TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS connected_accounts (uid TEXT PRIMARY KEY, user_id TEXT NOT NULL, provider TEXT NOT NULL UNIQUE, access_token TEXT NOT NULL, refresh_token TEXT, token_type TEXT NOT NULL, scopes TEXT NOT NULL, expires_at TEXT, account_label TEXT, status TEXT NOT NULL, metadata TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS task_connected_files (uid TEXT PRIMARY KEY, task_uid TEXT NOT NULL, provider TEXT NOT NULL, file_type TEXT NOT NULL, external_file_id TEXT NOT NULL, external_file_url TEXT NOT NULL, file_name TEXT NOT NULL, thumbnail_url TEXT, metadata TEXT NOT NULL, status TEXT NOT NULL, connected_by TEXT NOT NULL DEFAULT 'local-user', created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
   CREATE INDEX IF NOT EXISTS task_connected_files_task_idx ON task_connected_files(task_uid, created_at);
-  CREATE TABLE IF NOT EXISTS ai_file_actions (uid TEXT PRIMARY KEY, task_uid TEXT NOT NULL, connected_file_uid TEXT NOT NULL, prompt TEXT NOT NULL, action_type TEXT NOT NULL, status TEXT NOT NULL, result_summary TEXT NOT NULL, error_message TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS ai_file_actions (uid TEXT PRIMARY KEY, task_uid TEXT NOT NULL, connected_file_uid TEXT NOT NULL, user_id TEXT NOT NULL DEFAULT 'local-user', prompt TEXT NOT NULL, action_type TEXT NOT NULL, status TEXT NOT NULL, result_summary TEXT NOT NULL, error_message TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
   CREATE INDEX IF NOT EXISTS ai_file_actions_task_idx ON ai_file_actions(task_uid, created_at);
   CREATE TABLE IF NOT EXISTS sync_outbox (id INTEGER PRIMARY KEY AUTOINCREMENT, table_name TEXT NOT NULL, entity_uid TEXT NOT NULL, operation TEXT NOT NULL, payload TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT, created_at TEXT NOT NULL);
 `);
@@ -47,6 +49,22 @@ if (!sessionColumns.some((column) => column.name === "pending_task_uids"))
 if (!sessionColumns.some((column) => column.name === "review_gate"))
   sqlite.exec(
     "ALTER TABLE sessions ADD COLUMN review_gate TEXT NOT NULL DEFAULT 'batch_end'",
+  );
+
+const connectedFileColumns = sqlite
+  .prepare("PRAGMA table_info(task_connected_files)")
+  .all() as Array<{ name: string }>;
+if (!connectedFileColumns.some((column) => column.name === "connected_by"))
+  sqlite.exec(
+    "ALTER TABLE task_connected_files ADD COLUMN connected_by TEXT NOT NULL DEFAULT 'local-user'",
+  );
+
+const aiFileActionColumns = sqlite
+  .prepare("PRAGMA table_info(ai_file_actions)")
+  .all() as Array<{ name: string }>;
+if (!aiFileActionColumns.some((column) => column.name === "user_id"))
+  sqlite.exec(
+    "ALTER TABLE ai_file_actions ADD COLUMN user_id TEXT NOT NULL DEFAULT 'local-user'",
   );
 
 const defaultTemplate = `You are planning work inside an existing software repository.
@@ -318,6 +336,89 @@ export function listDailyLogs(projectUid: string, page = 1, pageSize = 30) {
     totalPages: Math.max(1, Math.ceil(all.length / safeSize)),
     hasMore: offset + safeSize < all.length,
   };
+}
+
+type ConnectedAccount = typeof schema.connectedAccounts.$inferSelect;
+type ConnectedAccountInsert = typeof schema.connectedAccounts.$inferInsert;
+
+function publicAccount(
+  provider: "google" | "figma",
+  configured: boolean,
+  account?: ConnectedAccount,
+  message?: string | null,
+): ConnectedAccountPublic {
+  return {
+    provider,
+    status: configured ? account?.status || "not_connected" : "not_configured",
+    configured,
+    connected: Boolean(configured && account?.status === "connected"),
+    scopes: account?.scopes || [],
+    expiresAt: account?.expiresAt || null,
+    accountLabel: account?.accountLabel || null,
+    updatedAt: account?.updatedAt || null,
+    message: message || null,
+  };
+}
+
+export function getConnectedAccount(provider: "google" | "figma") {
+  return db
+    .select()
+    .from(schema.connectedAccounts)
+    .where(eq(schema.connectedAccounts.provider, provider))
+    .get() as ConnectedAccount | undefined;
+}
+
+export function listConnectedAccountStatus(configured: {
+  google: boolean;
+  figma: boolean;
+}) {
+  const google = getConnectedAccount("google");
+  const figma = getConnectedAccount("figma");
+  return {
+    google: publicAccount(
+      "google",
+      configured.google,
+      google,
+      configured.google
+        ? null
+        : "Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env.local",
+    ),
+    figma: publicAccount(
+      "figma",
+      configured.figma,
+      figma,
+      configured.figma
+        ? null
+        : "Set FIGMA_CLIENT_ID/FIGMA_CLIENT_SECRET or FIGMA_PERSONAL_ACCESS_TOKEN",
+    ),
+  };
+}
+
+export function saveConnectedAccount(value: ConnectedAccountInsert) {
+  db.insert(schema.connectedAccounts)
+    .values(value)
+    .onConflictDoUpdate({
+      target: schema.connectedAccounts.provider,
+      set: { ...value, updatedAt: new Date().toISOString() },
+    })
+    .run();
+}
+
+export function updateConnectedAccount(
+  provider: "google" | "figma",
+  values: Partial<ConnectedAccountInsert>,
+) {
+  db.update(schema.connectedAccounts)
+    .set({ ...values, updatedAt: new Date().toISOString() })
+    .where(eq(schema.connectedAccounts.provider, provider))
+    .run();
+  return getConnectedAccount(provider);
+}
+
+export function deleteConnectedAccount(provider: "google" | "figma") {
+  db.delete(schema.connectedAccounts)
+    .where(eq(schema.connectedAccounts.provider, provider))
+    .run();
 }
 
 export function listConnectedFiles(taskUid: string): ConnectedFile[] {

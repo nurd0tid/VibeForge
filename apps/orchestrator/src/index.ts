@@ -9,12 +9,13 @@ import { z } from "zod";
 import {
   CreateProjectSchema,
   CreateAiFileActionSchema,
+  CreateConnectedFileFromProviderSchema,
   CreateConnectedFileSchema,
+  FigmaPatConnectSchema,
   CreateTaskSchema,
   QueueModeSchema,
   ReviewDecisionSchema,
   type ConnectedFile,
-  type AiFileAction,
   type NormalizedEvent,
   type Task,
 } from "@vk/contracts";
@@ -22,10 +23,12 @@ import { config } from "./config.js";
 import {
   activeTemplate,
   detachConnectedFile,
+  deleteConnectedAccount,
   getConnectedFile,
   getProject,
   getSession,
   getTask,
+  listConnectedAccountStatus,
   listAiFileActions,
   listConnectedFiles,
   listDailyLogs,
@@ -36,7 +39,6 @@ import {
   listTasks,
   nextTaskNumber,
   saveDailyLog,
-  saveAiFileAction,
   saveConnectedFile,
   saveProject,
   saveReview,
@@ -45,6 +47,20 @@ import {
   updateSession,
   updateTask,
 } from "./db.js";
+import {
+  connectedProviderConfigStatus,
+  connectFigmaPat,
+  createAiFileActionWithContext,
+  figmaStartUrl,
+  getFigmaFile,
+  getGoogleFile,
+  googleStartUrl,
+  handleFigmaCallback,
+  handleGoogleCallback,
+  listGoogleFiles,
+  readConnectedFileContext,
+  syncConnectedFileMetadata,
+} from "./connected-providers.js";
 import {
   checkpoint,
   createWorktree,
@@ -89,6 +105,11 @@ function isAuthorized(request: {
 
 app.addHook("onRequest", async (request, reply) => {
   if (request.url === "/health") return;
+  if (
+    request.url.startsWith("/api/connect/google/callback") ||
+    request.url.startsWith("/api/connect/figma/callback")
+  )
+    return;
   const origin = request.headers.origin;
   if (origin && !config.allowedOrigins.includes(origin))
     return reply.code(403).send({ error: "Origin is not allowed" });
@@ -110,6 +131,58 @@ app.get("/api/filesystem", async (request) => {
 app.post("/api/filesystem/pick-folder", async () => pickFolderNative());
 
 app.get("/api/opencode/probe", async () => ({ probe: await openCode.probe() }));
+
+app.get("/api/connect/status", async () =>
+  listConnectedAccountStatus(connectedProviderConfigStatus()),
+);
+
+app.post("/api/connect/google/start", async () => googleStartUrl());
+
+app.get("/api/connect/google/callback", async (request, reply) => {
+  const query = z
+    .object({
+      code: z.string().optional(),
+      state: z.string().optional(),
+      error: z.string().optional(),
+    })
+    .parse(request.query);
+  return reply.type("text/html").send(await handleGoogleCallback(query));
+});
+
+app.post("/api/connect/figma/start", async () => figmaStartUrl());
+
+app.get("/api/connect/figma/callback", async (request, reply) => {
+  const query = z
+    .object({
+      code: z.string().optional(),
+      state: z.string().optional(),
+      error: z.string().optional(),
+    })
+    .parse(request.query);
+  return reply.type("text/html").send(await handleFigmaCallback(query));
+});
+
+app.post("/api/connect/figma/pat", async (request) => {
+  const input = z
+    .object({ token: z.string().min(10).optional() })
+    .parse(request.body || {});
+  if (input.token) FigmaPatConnectSchema.parse(input);
+  connectFigmaPat(input.token);
+  return listConnectedAccountStatus(connectedProviderConfigStatus());
+});
+
+app.delete("/api/connect/:provider", async (request) => {
+  const { provider } = z
+    .object({ provider: z.enum(["google", "figma"]) })
+    .parse(request.params);
+  deleteConnectedAccount(provider);
+  return listConnectedAccountStatus(connectedProviderConfigStatus());
+});
+
+app.get("/api/connect/google/files", async (request) => {
+  const query = z.object({ q: z.string().default("") }).parse(request.query);
+  return { files: await listGoogleFiles(query.q) };
+});
 
 app.post("/api/documents/read", async (request) => {
   const input = z.object({ path: z.string().min(1) }).parse(request.body);
@@ -268,7 +341,9 @@ function inferConnectedFile(input: {
   let externalFileId = "";
   if (provider === "figma") {
     fileType = "figma";
-    const fileIndex = pathParts.findIndex((part) => part === "file");
+    const fileIndex = pathParts.findIndex((part) =>
+      ["file", "design", "proto", "board"].includes(part),
+    );
     externalFileId =
       fileIndex >= 0 ? pathParts[fileIndex + 1] || url.pathname : url.pathname;
   } else {
@@ -293,6 +368,36 @@ function inferConnectedFile(input: {
   return { provider, fileType: fileType || "docs", externalFileId, fileName };
 }
 
+function connectedFileFromProviderResult(
+  taskUid: string,
+  file: {
+    provider: "google" | "figma";
+    fileType: "docs" | "sheets" | "slides" | "figma";
+    externalFileId: string;
+    externalFileUrl: string;
+    fileName: string;
+    thumbnailUrl: string | null;
+    metadata: Record<string, unknown>;
+  },
+): ConnectedFile {
+  const now = new Date().toISOString();
+  return {
+    uid: randomUUID(),
+    taskUid,
+    provider: file.provider,
+    fileType: file.fileType,
+    externalFileId: file.externalFileId,
+    externalFileUrl: file.externalFileUrl,
+    fileName: file.fileName,
+    thumbnailUrl: file.thumbnailUrl,
+    metadata: file.metadata,
+    status: "synced",
+    connectedBy: "local-user",
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 app.get("/api/tasks/:taskUid/connected-files", async (request) => {
   const { taskUid } = z
     .object({ taskUid: z.string().uuid() })
@@ -312,25 +417,77 @@ app.post("/api/tasks/:taskUid/connected-files", async (request, reply) => {
   const input = CreateConnectedFileSchema.parse(request.body);
   const inferred = inferConnectedFile(input);
   const now = new Date().toISOString();
-  const value: ConnectedFile = {
-    uid: randomUUID(),
-    taskUid,
-    provider: inferred.provider,
-    fileType: inferred.fileType,
-    externalFileId: inferred.externalFileId,
-    externalFileUrl: input.externalFileUrl,
-    fileName: inferred.fileName,
-    thumbnailUrl: null,
-    metadata: {
-      source: "manual-url",
-      note: "OAuth/API sync is scaffolded; user still edits in the original Google/Figma app.",
-    },
-    status: "connected",
-    createdAt: now,
-    updatedAt: now,
-  };
+  let value: ConnectedFile;
+  try {
+    const providerFile =
+      inferred.provider === "google"
+        ? await getGoogleFile(inferred.externalFileId)
+        : await getFigmaFile(inferred.externalFileId);
+    value = connectedFileFromProviderResult(taskUid, providerFile);
+  } catch (error) {
+    value = {
+      uid: randomUUID(),
+      taskUid,
+      provider: inferred.provider,
+      fileType: inferred.fileType,
+      externalFileId: inferred.externalFileId,
+      externalFileUrl: input.externalFileUrl,
+      fileName: inferred.fileName,
+      thumbnailUrl: null,
+      metadata: {
+        source: "manual-url",
+        metadataError: error instanceof Error ? error.message : String(error),
+        note: "Connect the provider account to sync metadata and allow AI to read context.",
+      },
+      status: "not_connected",
+      connectedBy: "local-user",
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
   saveConnectedFile(value);
   return reply.code(201).send(value);
+});
+
+app.post(
+  "/api/tasks/:taskUid/connected-files/from-provider",
+  async (request, reply) => {
+    const { taskUid } = z
+      .object({ taskUid: z.string().uuid() })
+      .parse(request.params);
+    if (!getTask(taskUid)) throw app.httpErrors.notFound("Task not found");
+    const input = CreateConnectedFileFromProviderSchema.parse(request.body);
+    const providerFile =
+      input.provider === "google"
+        ? await getGoogleFile(input.externalFileId)
+        : await getFigmaFile(input.externalFileId);
+    const value = connectedFileFromProviderResult(taskUid, {
+      ...providerFile,
+      externalFileUrl: input.externalFileUrl || providerFile.externalFileUrl,
+      fileName: input.fileName || providerFile.fileName,
+      fileType: input.fileType || providerFile.fileType,
+    });
+    saveConnectedFile(value);
+    return reply.code(201).send(value);
+  },
+);
+
+app.post("/api/connected-files/:fileUid/sync", async (request) => {
+  const { fileUid } = z
+    .object({ fileUid: z.string().uuid() })
+    .parse(request.params);
+  const file = getConnectedFile(fileUid);
+  if (!file) throw app.httpErrors.notFound("Connected file not found");
+  return syncConnectedFileMetadata(file);
+});
+
+app.get("/api/connected-files/:fileUid/context", async (request) => {
+  const { fileUid } = z
+    .object({ fileUid: z.string().uuid() })
+    .parse(request.params);
+  const file = getConnectedFile(fileUid);
+  if (!file) throw app.httpErrors.notFound("Connected file not found");
+  return { text: await readConnectedFileContext(file) };
 });
 
 app.delete("/api/connected-files/:fileUid", async (request) => {
@@ -351,28 +508,13 @@ app.post("/api/tasks/:taskUid/ai-file-actions", async (request, reply) => {
   const file = getConnectedFile(input.connectedFileUid);
   if (!file || file.taskUid !== taskUid)
     throw app.httpErrors.notFound("Connected file not found");
-  const now = new Date().toISOString();
-  const resultSummary = [
-    `AI plan prepared for ${file.fileName}.`,
-    `Prompt: ${input.prompt}`,
-    "MVP safety: KarsaDesk did not modify the original file yet.",
-    file.provider === "google"
-      ? "Next integration step: Google OAuth + Drive/Docs/Sheets/Slides API apply/preview."
-      : "Next integration step: Figma metadata API now, Figma Plugin for selected-frame edits later.",
-  ].join("\n");
-  const action: AiFileAction = {
-    uid: randomUUID(),
+  const action = await createAiFileActionWithContext({
     taskUid,
-    connectedFileUid: file.uid,
+    file,
     prompt: input.prompt,
     actionType: input.actionType || "plan",
-    status: "success",
-    resultSummary,
-    errorMessage: null,
-    createdAt: now,
-    updatedAt: now,
-  };
-  saveAiFileAction(action);
+    applyMode: input.applyMode,
+  });
   return reply.code(201).send(action);
 });
 

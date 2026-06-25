@@ -23,6 +23,24 @@ export const config = {
     process.env.VK_WORKTREE_DIR?.trim() || path.join(dataDir, "worktrees"),
   logRetentionDays: Number(process.env.VK_LOG_RETENTION_DAYS || 30),
   opencodeBin: process.env.OPENCODE_BIN?.trim() || "opencode",
+  connectedProviders: {
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID?.trim() || "",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET?.trim() || "",
+      redirectUri:
+        process.env.GOOGLE_OAUTH_REDIRECT_URI?.trim() ||
+        "http://127.0.0.1:4317/api/connect/google/callback",
+    },
+    figma: {
+      clientId: process.env.FIGMA_CLIENT_ID?.trim() || "",
+      clientSecret: process.env.FIGMA_CLIENT_SECRET?.trim() || "",
+      redirectUri:
+        process.env.FIGMA_OAUTH_REDIRECT_URI?.trim() ||
+        "http://127.0.0.1:4317/api/connect/figma/callback",
+      personalAccessToken:
+        process.env.FIGMA_PERSONAL_ACCESS_TOKEN?.trim() || "",
+    },
+  },
   nocodb: {
     baseUrl: (process.env.NOCODB_BASE_URL || "https://app.nocodb.com").replace(
       /\/$/,

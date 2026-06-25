@@ -12,10 +12,11 @@ UI berjalan di `http://127.0.0.1:3456`. Orchestrator lokal berjalan di `http://1
 - Jalankan task Next, Selected, atau All dengan review gate.
 - Review diff dan explicit merge; tidak auto-stash, tidak auto-merge.
 - Connected Files per task:
-  - attach Google Docs/Sheets/Slides atau Figma URL;
-  - simpan metadata dasar dan status koneksi;
+  - connect Google Workspace OAuth atau Figma OAuth/PAT lokal;
+  - cari/attach Google Docs/Sheets/Slides dari Drive;
+  - attach Figma URL/file key dan sync metadata REST API;
   - tombol Open ke editor asli Google/Figma;
-  - AI Assistant per connected file;
+  - AI Assistant per connected file dengan preview/action history;
   - action history per task.
 - Local Document Studio masih ada sebagai scratchpad lokal, bukan arah utama integrasi Google/Figma.
 
@@ -91,15 +92,17 @@ Migration idempotent dan hanya membuat tabel berprefix `vk_`.
 
 KarsaDesk bukan editor Word/Spreadsheet/Figma buatan sendiri. File asli tetap dibuka di `docs.google.com`, `sheets.google.com`, `slides.google.com`, atau `figma.com`.
 
-1. Buat/pilih task.
-2. Buka task inspector.
-3. Di **Connected Files**, paste URL Google Docs/Sheets/Slides atau Figma.
-4. Klik **Attach original file**.
-5. Klik **Open** untuk mengedit di aplikasi asli.
-6. Tulis instruksi di **AI Assistant**, lalu klik **Ask AI**.
-7. Riwayat action tersimpan di task.
+1. Siapkan env Google/Figma di `.env.local`, restart `npm run dev`.
+2. Buat/pilih task.
+3. Buka task inspector.
+4. Di **Connected Files**, klik **Connect** Google/Figma.
+5. Untuk Google, search Drive lalu attach Docs/Sheets/Slides.
+6. Untuk Figma, connect OAuth atau masukkan PAT lokal, lalu paste URL Figma dan klik **Attach original file**.
+7. Klik **Open** untuk mengedit di aplikasi asli.
+8. Tulis instruksi di **AI Assistant**, lalu klik **Ask AI / prepare preview**.
+9. Riwayat action tersimpan di task.
 
-MVP saat ini menyimpan koneksi file, metadata dasar, tombol Open, prompt AI, dan action history. OAuth Google, Google Picker, Google Docs/Sheets/Slides API apply, Figma metadata sync, dan Figma Plugin bridge disiapkan sebagai layer berikutnya.
+MVP saat ini sudah memiliki account status, OAuth/PAT endpoint, token lokal terenkripsi, Google Drive listing, Google export context, Figma metadata/tree read, metadata sync, tombol Open, dan action history. Perubahan langsung ke file asli masih dibuat sebagai preview `needs_confirmation`; apply adapters per Docs/Sheets/Slides dan Figma Plugin bridge adalah tahap berikutnya supaya tidak merusak file user tanpa konfirmasi.
 
 Env yang nanti dipakai:
 
@@ -109,8 +112,39 @@ GOOGLE_CLIENT_SECRET=
 GOOGLE_OAUTH_REDIRECT_URI=http://127.0.0.1:4317/api/connect/google/callback
 FIGMA_CLIENT_ID=
 FIGMA_CLIENT_SECRET=
+FIGMA_OAUTH_REDIRECT_URI=http://127.0.0.1:4317/api/connect/figma/callback
 FIGMA_PERSONAL_ACCESS_TOKEN=
 ```
+
+### Google OAuth setup
+
+Di Google Cloud Console:
+
+1. Buat OAuth Client untuk aplikasi desktop/web lokal.
+2. Tambahkan authorized redirect URI:
+   `http://127.0.0.1:4317/api/connect/google/callback`
+3. Isi `GOOGLE_CLIENT_ID` dan `GOOGLE_CLIENT_SECRET`.
+4. Pastikan API yang dibutuhkan aktif: Google Drive API, Google Docs API, Google Sheets API, Google Slides API.
+
+Scope yang diminta KarsaDesk:
+
+- `drive.file`
+- `documents`
+- `spreadsheets`
+- `presentations`
+
+Token disimpan terenkripsi di SQLite lokal (`VK_DATA_DIR`) dan tidak masuk browser bundle/NocoDB.
+
+### Figma setup
+
+Pilihan development paling cepat:
+
+1. Buat Personal Access Token dari akun Figma.
+2. Isi `FIGMA_PERSONAL_ACCESS_TOKEN` atau paste token di panel Connected Files.
+3. Attach URL Figma di task, lalu klik **Sync** untuk metadata.
+
+OAuth Figma juga disiapkan dengan redirect:
+`http://127.0.0.1:4317/api/connect/figma/callback`
 
 ## Local Document Studio scratchpad
 
@@ -148,8 +182,9 @@ npm run nocodb:setup
 ## Troubleshooting
 
 - **Web masih ke port 3000:** stop proses Next lama dan jalankan dari folder ini; app memakai port 3456.
-- **Browse folder tidak muncul:** gunakan **Browse folders**; system dialog hanya opsi sekunder dan bisa diblokir OS/headless session.
+- **Browse folder tidak muncul:** klik **Browse...** untuk native OS picker atau **Folder tree** untuk fallback lokal.
 - **OpenCode unavailable:** cek `opencode --version`, atau set `OPENCODE_BIN`.
 - **No providers/models:** login provider di OpenCode lalu refresh project.
 - **Cannot create session:** source worktree harus clean dan target branch harus sedang checked out.
-- **Google/Figma belum auto-edit:** isi OAuth/API env dan lanjutkan adapter resmi; MVP tidak mengubah file asli tanpa layer tersebut.
+- **Google/Figma belum bisa connect:** cek env OAuth/PAT, restart dev server, lalu cek status di Connected Files.
+- **AI file action butuh confirmation:** ini normal; MVP membaca konteks dan menyiapkan preview, tidak menulis ke file asli tanpa apply adapter/konfirmasi.

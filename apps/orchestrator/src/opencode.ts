@@ -53,6 +53,41 @@ function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
   });
 }
 
+function redactSensitive(value: string) {
+  return value
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer [redacted]")
+    .replace(/sk-[A-Za-z0-9_-]{8,}/gi, "sk-[redacted]")
+    .replace(/nc_pat_[A-Za-z0-9_-]+/gi, "nc_pat_[redacted]");
+}
+
+function stringifyDiagnostic(value: unknown) {
+  if (value instanceof Error) return value.message;
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+export function providerDiagnostic(value: unknown) {
+  const text = redactSensitive(stringifyDiagnostic(value)).replace(/\s+/g, " ");
+  const patterns = [
+    /Insufficient balance[^"}\]]*/i,
+    /Unauthorized[^"}\]]*/i,
+    /invalid api key/i,
+    /billing[^"}\]]*/i,
+    /quota[^"}\]]*/i,
+    /rate limit[^"}\]]*/i,
+    /payment required[^"}\]]*/i,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[0]) return match[0].trim();
+  }
+  return text.slice(0, 700);
+}
+
 export interface CliAdapter {
   probe(): Promise<CliProbe>;
   discover(projectPath: string): Promise<Provider[]>;
@@ -445,11 +480,31 @@ export class OpenCodeAdapter implements CliAdapter {
     prompt: string,
   ): Promise<string> {
     const runtime = await this.startServer(directory, false);
+    const diagnostics: string[] = [];
     try {
       const created = await runtime.client.session.create({
         body: { title: "KarsaDesk brainstorm" },
       });
       if (!created.data) throw new Error(JSON.stringify(created.error));
+      const subscription = await runtime.client.event.subscribe({
+        signal: runtime.eventAbort.signal,
+      });
+      void (async () => {
+        try {
+          for await (const raw of subscription.stream) {
+            const text = providerDiagnostic(raw);
+            if (
+              /insufficient balance|unauthorized|invalid api key|billing|quota|rate limit|payment required/i.test(
+                text,
+              )
+            )
+              diagnostics.push(text);
+          }
+        } catch {
+          // The stream is best-effort for diagnostics; the prompt response below
+          // remains the source of truth for success/failure.
+        }
+      })();
       const result = await withTimeout(
         runtime.client.session.prompt({
           path: { id: created.data.id },
@@ -461,12 +516,24 @@ export class OpenCodeAdapter implements CliAdapter {
         }),
         "AI chat",
       );
-      if (!result.data) throw new Error(JSON.stringify(result.error));
-      return result.data.parts
+      if (result.error || !result.data)
+        throw new Error(
+          providerDiagnostic(
+            result.error || diagnostics.at(-1) || "OpenCode did not respond",
+          ),
+        );
+      const text = result.data.parts
         .filter((part) => part.type === "text")
         .map((part) => ("text" in part ? part.text : ""))
         .join("\n")
         .trim();
+      if (!text) {
+        throw new Error(
+          diagnostics.at(-1) ||
+            "OpenCode returned an empty response. The selected provider/model may have failed before producing text.",
+        );
+      }
+      return text;
     } finally {
       runtime.eventAbort.abort();
       runtime.process.kill();

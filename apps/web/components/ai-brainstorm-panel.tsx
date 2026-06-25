@@ -18,6 +18,7 @@ type ChatMessage = {
   role: "user" | "assistant";
   content: string;
   fallback?: boolean;
+  status?: "pending" | "error";
 };
 
 const field =
@@ -64,6 +65,13 @@ export function AiBrainstormPanel({
     const nextMessages: ChatMessage[] = [
       ...messages,
       { role: "user", content: message },
+      {
+        role: "assistant",
+        content: provider
+          ? `Running ${provider.name} · ${modelId || "selected model"}...`
+          : "Running local fallback...",
+        status: "pending",
+      },
     ];
     setMessages(nextMessages);
     setInput("");
@@ -75,19 +83,34 @@ export function AiBrainstormPanel({
           message,
           providerId: provider?.id,
           modelId,
-          history: nextMessages.map(({ role, content }) => ({ role, content })),
+          history: nextMessages
+            .filter((item) => item.status !== "pending")
+            .map(({ role, content }) => ({ role, content })),
         },
       );
       setMessages((items) => [
-        ...items,
+        ...items.filter((item) => item.status !== "pending"),
         {
           role: "assistant",
-          content: response.message || "No response.",
+          content:
+            response.message ||
+            "OpenCode returned an empty response. Check provider billing/credential status, then try again.",
           fallback: response.fallback,
+          status: response.message ? undefined : "error",
         },
       ]);
       if (response.fallback) toast.info("AI chat used a local fallback");
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setMessages((items) => [
+        ...items.filter((item) => item.status !== "pending"),
+        {
+          role: "assistant",
+          content: message,
+          status: "error",
+          fallback: true,
+        },
+      ]);
       toast.error(error instanceof Error ? error.message : String(error));
     } finally {
       setBusy(false);
@@ -101,7 +124,12 @@ export function AiBrainstormPanel({
 
   const lastAssistant = [...messages]
     .reverse()
-    .find((message) => message.role === "assistant");
+    .find(
+      (message) =>
+        message.role === "assistant" &&
+        message.status !== "pending" &&
+        message.status !== "error",
+    );
 
   return (
     <aside className="scrollbar-thin fixed inset-y-0 right-0 z-30 flex w-[min(92vw,380px)] shrink-0 flex-col overflow-y-auto border-l border-border bg-elevated shadow-2xl lg:static lg:z-auto lg:w-[360px] lg:shadow-none">
@@ -162,12 +190,18 @@ export function AiBrainstormPanel({
             className={`rounded-xl border p-3 text-xs leading-5 ${
               message.role === "user"
                 ? "border-accent/30 bg-accent/10"
-                : "border-border bg-panel"
+                : message.status === "error"
+                  ? "border-danger/30 bg-danger/10"
+                  : message.status === "pending"
+                    ? "border-warning/30 bg-warning/10"
+                    : "border-border bg-panel"
             }`}
           >
             <div className="mb-1 flex items-center justify-between gap-2">
               <span className="flex items-center gap-1.5 font-medium">
-                {message.role === "assistant" ? (
+                {message.status === "pending" ? (
+                  <Loader2 className="size-3.5 animate-spin text-warning" />
+                ) : message.role === "assistant" ? (
                   <Bot className="size-3.5 text-accent" />
                 ) : (
                   <MessageSquare className="size-3.5 text-accent" />
@@ -178,14 +212,21 @@ export function AiBrainstormPanel({
                     fallback
                   </span>
                 )}
+                {message.status === "error" && (
+                  <span className="rounded bg-danger/10 px-1.5 py-0.5 text-[9px] text-danger">
+                    provider error
+                  </span>
+                )}
               </span>
-              <button
-                className="text-muted hover:text-foreground"
-                onClick={() => void copy(message.content)}
-                aria-label="Copy message"
-              >
-                <Copy className="size-3.5" />
-              </button>
+              {message.status !== "pending" && (
+                <button
+                  className="text-muted hover:text-foreground"
+                  onClick={() => void copy(message.content)}
+                  aria-label="Copy message"
+                >
+                  <Copy className="size-3.5" />
+                </button>
+              )}
             </div>
             <pre className="whitespace-pre-wrap font-sans text-muted">
               {message.content}

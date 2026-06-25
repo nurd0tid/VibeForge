@@ -62,6 +62,8 @@ export function fallbackSmartPrompt(
 export function fallbackBrainstorm(message: string, reason: string) {
   const ideas = splitIdeas(message);
   const bullets = (ideas.length ? ideas : [message]).slice(0, 5);
+  const providerIssue =
+    /balance|billing|quota|invalid api key|unauthorized|payment/i.test(reason);
   return [
     "AI provider belum berhasil merespons, jadi KarsaDesk membuat brainstorm lokal dulu.",
     `Alasan: ${reason}`,
@@ -70,6 +72,9 @@ export function fallbackBrainstorm(message: string, reason: string) {
     ...bullets.map((item, index) => `${index + 1}. ${item}`),
     "",
     "Saran next step:",
+    providerIssue
+      ? "- Cek billing/credit/API key provider di OpenCode, lalu pilih provider/model yang aktif."
+      : "- Pastikan provider/model OpenCode masih aktif kalau ingin pakai AI remote.",
     "- Pilih satu poin paling penting.",
     "- Ubah jadi task kecil.",
     "- Jalankan Smart Prompt lagi setelah provider/model stabil.",

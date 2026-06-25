@@ -22,6 +22,7 @@ export const config = {
   worktreeDir:
     process.env.VK_WORKTREE_DIR?.trim() || path.join(dataDir, "worktrees"),
   logRetentionDays: Number(process.env.VK_LOG_RETENTION_DAYS || 30),
+  aiRequestTimeoutMs: Number(process.env.VK_AI_REQUEST_TIMEOUT_MS || 90_000),
   opencodeBin: process.env.OPENCODE_BIN?.trim() || "opencode",
   connectedProviders: {
     google: {

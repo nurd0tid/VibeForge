@@ -76,6 +76,7 @@ import {
   squashMerge,
 } from "./git.js";
 import { eventHub } from "./event-hub.js";
+import { fallbackBrainstorm, fallbackSmartPrompt } from "./ai-fallback.js";
 import { nocoHealth, setupNocoDb, syncOutboxOnce } from "./nocodb.js";
 import { openCode } from "./opencode.js";
 import { terminals } from "./terminal.js";
@@ -561,8 +562,8 @@ app.post("/api/projects/:projectUid/smart-prompt", async (request) => {
   const input = z
     .object({
       roughPrompt: z.string().min(10),
-      providerId: z.string().min(1),
-      modelId: z.string().min(1),
+      providerId: z.string().min(1).optional(),
+      modelId: z.string().min(1).optional(),
     })
     .parse(request.body);
   const project = getProject(projectUid);
@@ -571,12 +572,86 @@ app.post("/api/projects/:projectUid/smart-prompt", async (request) => {
     ? `Project memory files: ${project.memoryFiles.join(", ")}.`
     : "No standard project memory files were detected.";
   const prompt = `${activeTemplate()}\n\n${context}\n\nRough request:\n${input.roughPrompt}`;
-  return openCode.generatePlan(
-    project.localPath,
-    input.providerId,
-    input.modelId,
-    prompt,
-  );
+  if (!input.providerId || !input.modelId) {
+    return fallbackSmartPrompt(
+      input.roughPrompt,
+      "No provider/model selected for Smart Prompt.",
+    );
+  }
+  try {
+    return await openCode.generatePlan(
+      project.localPath,
+      input.providerId,
+      input.modelId,
+      prompt,
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    app.log.warn({ error: message }, "Smart prompt fell back to local planner");
+    return fallbackSmartPrompt(input.roughPrompt, message);
+  }
+});
+
+app.post("/api/projects/:projectUid/ai-chat", async (request) => {
+  const { projectUid } = z
+    .object({ projectUid: z.string().uuid() })
+    .parse(request.params);
+  const input = z
+    .object({
+      message: z.string().min(2),
+      providerId: z.string().optional(),
+      modelId: z.string().optional(),
+      history: z
+        .array(
+          z.object({
+            role: z.enum(["user", "assistant"]),
+            content: z.string(),
+          }),
+        )
+        .default([]),
+    })
+    .parse(request.body);
+  const project = getProject(projectUid);
+  if (!project) throw app.httpErrors.notFound("Project not found");
+  const context = project.memoryFiles.length
+    ? `Project memory files: ${project.memoryFiles.join(", ")}.`
+    : "No standard project memory files were detected.";
+  const prompt = [
+    "You are KarsaDesk's brainstorming assistant inside a local kanban.",
+    "Help the user clarify ideas, test prompts, split work, and decide whether something should become tasks.",
+    "Do not modify files. Keep the answer practical and concise.",
+    context,
+    "",
+    "Recent conversation:",
+    ...input.history.slice(-8).map((item) => `${item.role}: ${item.content}`),
+    "",
+    `User: ${input.message}`,
+  ].join("\n");
+  if (!input.providerId || !input.modelId) {
+    return {
+      message: fallbackBrainstorm(
+        input.message,
+        "No provider/model selected for AI chat.",
+      ),
+      fallback: true,
+    };
+  }
+  try {
+    const message = await openCode.brainstorm(
+      project.localPath,
+      input.providerId,
+      input.modelId,
+      prompt,
+    );
+    return { message, fallback: false };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    app.log.warn({ error: reason }, "AI chat fell back to local response");
+    return {
+      message: fallbackBrainstorm(input.message, reason),
+      fallback: true,
+    };
+  }
 });
 
 app.get("/api/projects/:projectUid/sessions", async (request) => {

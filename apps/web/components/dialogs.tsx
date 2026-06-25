@@ -461,6 +461,8 @@ export function SmartPromptDialog({
   api,
   project,
   providers,
+  initialPrompt,
+  onInitialPromptConsumed,
   onPublished,
 }: {
   open: boolean;
@@ -468,6 +470,8 @@ export function SmartPromptDialog({
   api: ApiClient | null;
   project: Project | null;
   providers: Provider[];
+  initialPrompt?: string;
+  onInitialPromptConsumed?: () => void;
   onPublished: (tasks: Task[]) => void;
 }) {
   const [roughPrompt, setRoughPrompt] = useState("");
@@ -475,23 +479,25 @@ export function SmartPromptDialog({
   const [modelId, setModelId] = useState("");
   const [draft, setDraft] = useState<SmartPromptResult | null>(null);
   const [busy, setBusy] = useState(false);
-  const provider =
-    providers.find((item) => item.id === providerId) || providers[0];
+  const provider = providers.find((item) => item.id === providerId) || null;
   useEffect(() => {
-    if (provider && !providerId) setProviderId(provider.id);
-  }, [provider, providerId]);
+    if (!open || !initialPrompt) return;
+    setRoughPrompt(initialPrompt);
+    onInitialPromptConsumed?.();
+  }, [open, initialPrompt, onInitialPromptConsumed]);
   useEffect(() => {
     if (provider && !provider.models.some((model) => model.id === modelId))
       setModelId(provider.models[0]?.id || "");
+    if (!provider) setModelId("");
   }, [provider, modelId]);
   async function generate() {
-    if (!api || !project || !provider || !modelId) return;
+    if (!api || !project || roughPrompt.trim().length < 10) return;
     setBusy(true);
     try {
       setDraft(
         await api.post<SmartPromptResult>(
           `/api/projects/${project.uid}/smart-prompt`,
-          { roughPrompt, providerId: provider.id, modelId },
+          { roughPrompt, providerId: provider?.id, modelId },
         ),
       );
     } catch (error) {
@@ -572,6 +578,7 @@ export function SmartPromptDialog({
                   value={providerId}
                   onChange={(e) => setProviderId(e.target.value)}
                 >
+                  <option value="">Local fallback / instant</option>
                   {providers.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.name}
@@ -585,7 +592,9 @@ export function SmartPromptDialog({
                   className={field}
                   value={modelId}
                   onChange={(e) => setModelId(e.target.value)}
+                  disabled={!provider}
                 >
+                  {!provider && <option value="">No model</option>}
                   {provider?.models.map((model) => (
                     <option key={model.id} value={model.id}>
                       {model.name}
@@ -601,7 +610,7 @@ export function SmartPromptDialog({
             )}
             <div className="flex justify-end">
               <Button
-                disabled={roughPrompt.length < 10 || !modelId || busy}
+                disabled={roughPrompt.length < 10 || busy}
                 onClick={() => void generate()}
               >
                 {busy ? (

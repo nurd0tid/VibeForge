@@ -24,6 +24,35 @@ type Runtime = {
 };
 type Emit = (event: NormalizedEvent) => void;
 
+class OpenCodeTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "OpenCodeTimeoutError";
+  }
+}
+
+function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(
+        new OpenCodeTimeoutError(
+          `${label} timed out after ${Math.round(config.aiRequestTimeoutMs / 1000)} seconds`,
+        ),
+      );
+    }, config.aiRequestTimeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 export interface CliAdapter {
   probe(): Promise<CliProbe>;
   discover(projectPath: string): Promise<Provider[]>;
@@ -386,20 +415,58 @@ export class OpenCodeAdapter implements CliAdapter {
         body: { title: "Smart prompt draft" },
       });
       if (!created.data) throw new Error(JSON.stringify(created.error));
-      const result = await runtime.client.session.prompt({
-        path: { id: created.data.id },
-        body: {
-          agent: "plan",
-          model: { providerID: providerId, modelID: modelId },
-          parts: [{ type: "text", text: prompt }],
-        },
-      });
+      const result = await withTimeout(
+        runtime.client.session.prompt({
+          path: { id: created.data.id },
+          body: {
+            agent: "plan",
+            model: { providerID: providerId, modelID: modelId },
+            parts: [{ type: "text", text: prompt }],
+          },
+        }),
+        "Smart Prompt",
+      );
       if (!result.data) throw new Error(JSON.stringify(result.error));
       const text = result.data.parts
         .filter((part) => part.type === "text")
         .map((part) => ("text" in part ? part.text : ""))
         .join("\n");
       return parseSmartPrompt(text);
+    } finally {
+      runtime.eventAbort.abort();
+      runtime.process.kill();
+    }
+  }
+
+  async brainstorm(
+    directory: string,
+    providerId: string,
+    modelId: string,
+    prompt: string,
+  ): Promise<string> {
+    const runtime = await this.startServer(directory, false);
+    try {
+      const created = await runtime.client.session.create({
+        body: { title: "KarsaDesk brainstorm" },
+      });
+      if (!created.data) throw new Error(JSON.stringify(created.error));
+      const result = await withTimeout(
+        runtime.client.session.prompt({
+          path: { id: created.data.id },
+          body: {
+            agent: "plan",
+            model: { providerID: providerId, modelID: modelId },
+            parts: [{ type: "text", text: prompt }],
+          },
+        }),
+        "AI chat",
+      );
+      if (!result.data) throw new Error(JSON.stringify(result.error));
+      return result.data.parts
+        .filter((part) => part.type === "text")
+        .map((part) => ("text" in part ? part.text : ""))
+        .join("\n")
+        .trim();
     } finally {
       runtime.eventAbort.abort();
       runtime.process.kill();

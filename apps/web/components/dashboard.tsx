@@ -12,6 +12,7 @@ import {
   KanbanSquare,
   Layers3,
   Loader2,
+  MessageSquare,
   Moon,
   PanelRightClose,
   Palette,
@@ -47,6 +48,7 @@ import {
 import { GoogleWorkspaceModal } from "@/components/google-workspace-modal";
 import { FigmaComingSoonModal } from "@/components/figma-coming-soon";
 import { ConnectedFilesPanel } from "@/components/connected-files-panel";
+import { AiBrainstormPanel } from "@/components/ai-brainstorm-panel";
 import { useLocalTheme } from "@/components/providers";
 import { SessionWorkspace } from "@/components/session-workspace";
 import { cn } from "@/lib/utils";
@@ -79,6 +81,8 @@ export function Dashboard() {
   const [projectDialog, setProjectDialog] = useState(false);
   const [taskDialog, setTaskDialog] = useState(false);
   const [smartDialog, setSmartDialog] = useState(false);
+  const [smartPromptSeed, setSmartPromptSeed] = useState("");
+  const [aiChatOpen, setAiChatOpen] = useState(true);
   const [sessionDialog, setSessionDialog] = useState(false);
   const [googleWorkspaceOpen, setGoogleWorkspaceOpen] = useState(false);
   const [figmaOpen, setFigmaOpen] = useState(false);
@@ -468,6 +472,14 @@ export function Dashboard() {
                 <Sparkles className="size-3.5 text-accent" />{" "}
                 <span className="hidden sm:inline">Smart prompt</span>
               </Button>
+              <Button
+                variant={aiChatOpen ? "default" : "secondary"}
+                size="sm"
+                onClick={() => setAiChatOpen((value) => !value)}
+              >
+                <MessageSquare className="size-3.5" />{" "}
+                <span className="hidden sm:inline">AI chat</span>
+              </Button>
               <Button size="sm" onClick={() => setSessionDialog(true)}>
                 <TerminalSquare className="size-3.5" />{" "}
                 <span className="hidden sm:inline">New session</span>
@@ -495,6 +507,25 @@ export function Dashboard() {
                   />
                 )}
               </section>
+              {aiChatOpen && api && project && (
+                <>
+                  <button
+                    aria-label="Close AI chat overlay"
+                    className="fixed inset-0 z-20 bg-black/30 backdrop-blur-sm lg:hidden"
+                    onClick={() => setAiChatOpen(false)}
+                  />
+                  <AiBrainstormPanel
+                    api={api}
+                    project={project}
+                    providers={integration?.providers || []}
+                    onClose={() => setAiChatOpen(false)}
+                    onUseAsSmartPrompt={(value) => {
+                      setSmartPromptSeed(value);
+                      setSmartDialog(true);
+                    }}
+                  />
+                </>
+              )}
               {selectedTask && inspectorOpen && (
                 <>
                   <button
@@ -739,6 +770,8 @@ export function Dashboard() {
         api={api}
         project={project}
         providers={integration?.providers || []}
+        initialPrompt={smartPromptSeed}
+        onInitialPromptConsumed={() => setSmartPromptSeed("")}
         onPublished={(values) => setTasks((items) => [...items, ...values])}
       />
       <SessionDialog

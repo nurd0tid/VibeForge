@@ -44,7 +44,7 @@ import {
   SmartPromptDialog,
   TaskDialog,
 } from "@/components/dialogs";
-import { DocumentStudioModal } from "@/components/document-studio";
+import { GoogleWorkspaceModal } from "@/components/google-workspace-modal";
 import { FigmaComingSoonModal } from "@/components/figma-coming-soon";
 import { ConnectedFilesPanel } from "@/components/connected-files-panel";
 import { useLocalTheme } from "@/components/providers";
@@ -80,7 +80,7 @@ export function Dashboard() {
   const [taskDialog, setTaskDialog] = useState(false);
   const [smartDialog, setSmartDialog] = useState(false);
   const [sessionDialog, setSessionDialog] = useState(false);
-  const [documentStudioOpen, setDocumentStudioOpen] = useState(false);
+  const [googleWorkspaceOpen, setGoogleWorkspaceOpen] = useState(false);
   const [figmaOpen, setFigmaOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const project = projects.find((item) => item.uid === projectUid) || null;
@@ -374,10 +374,10 @@ export function Dashboard() {
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => setDocumentStudioOpen(true)}
+              onClick={() => setGoogleWorkspaceOpen(true)}
             >
               <FileText className="size-3.5" />{" "}
-              <span className="hidden md:inline">Docs/PPT/Excel</span>
+              <span className="hidden md:inline">Google Docs</span>
             </Button>
             <Button
               variant="ghost"
@@ -752,12 +752,10 @@ export function Dashboard() {
           setSessionUid(value.uid);
         }}
       />
-      <DocumentStudioModal
-        open={documentStudioOpen}
-        onOpenChange={setDocumentStudioOpen}
+      <GoogleWorkspaceModal
+        open={googleWorkspaceOpen}
+        onOpenChange={setGoogleWorkspaceOpen}
         api={api}
-        project={project}
-        onTaskCreated={(value) => setTasks((items) => [...items, value])}
       />
       <FigmaComingSoonModal
         open={figmaOpen}

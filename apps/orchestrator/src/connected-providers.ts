@@ -420,6 +420,14 @@ function googleMime(fileType: FileType) {
   return "application/vnd.google-apps.document";
 }
 
+function googleUploadMime(fileType: FileType) {
+  if (fileType === "sheets")
+    return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  if (fileType === "slides")
+    return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+  return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+}
+
 function googleOpenUrl(fileType: FileType, fileId: string) {
   if (fileType === "sheets")
     return `https://docs.google.com/spreadsheets/d/${fileId}/edit`;
@@ -535,6 +543,238 @@ export async function getGoogleFile(
         null,
     },
   };
+}
+
+export async function createGoogleWorkspaceFile(input: {
+  fileType: "docs" | "sheets" | "slides";
+  title: string;
+  prompt?: string;
+}) {
+  const token = await googleAccessToken();
+  const title = input.title.trim() || "Untitled KarsaDesk document";
+  const prompt = input.prompt?.trim() || "";
+  if (input.fileType === "docs") {
+    const created = await apiJson<{ documentId: string; title?: string }>(
+      "https://docs.googleapis.com/v1/documents",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ title }),
+      },
+      "google",
+    );
+    if (prompt) {
+      await apiJson<unknown>(
+        `https://docs.googleapis.com/v1/documents/${encodeURIComponent(created.documentId)}:batchUpdate`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            requests: [
+              {
+                insertText: {
+                  location: { index: 1 },
+                  text: `${prompt}\n`,
+                },
+              },
+            ],
+          }),
+        },
+        "google",
+      );
+    }
+    return getGoogleFile(created.documentId);
+  }
+  if (input.fileType === "sheets") {
+    const created = await apiJson<{ spreadsheetId: string }>(
+      "https://sheets.googleapis.com/v4/spreadsheets",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          properties: { title },
+          sheets: [{ properties: { title: "KarsaDesk Draft" } }],
+        }),
+      },
+      "google",
+    );
+    if (prompt) {
+      const rows = [
+        ["KarsaDesk Prompt", prompt],
+        [
+          "Next Step",
+          "Ask AI in KarsaDesk to structure calculations/formulas.",
+        ],
+      ];
+      await apiJson<unknown>(
+        `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(created.spreadsheetId)}/values/${encodeURIComponent("KarsaDesk Draft!A1")}?valueInputOption=USER_ENTERED`,
+        {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ values: rows }),
+        },
+        "google",
+      );
+    }
+    return getGoogleFile(created.spreadsheetId);
+  }
+  const created = await apiJson<{ presentationId: string }>(
+    "https://slides.googleapis.com/v1/presentations",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ title }),
+    },
+    "google",
+  );
+  if (prompt) {
+    const slideId = `kd_slide_${randomUUID().replaceAll("-", "_")}`;
+    const titleBoxId = `kd_title_${randomUUID().replaceAll("-", "_")}`;
+    const bodyBoxId = `kd_body_${randomUUID().replaceAll("-", "_")}`;
+    await apiJson<unknown>(
+      `https://slides.googleapis.com/v1/presentations/${encodeURIComponent(created.presentationId)}:batchUpdate`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          requests: [
+            {
+              createSlide: {
+                objectId: slideId,
+                slideLayoutReference: { predefinedLayout: "BLANK" },
+              },
+            },
+            {
+              createShape: {
+                objectId: titleBoxId,
+                shapeType: "TEXT_BOX",
+                elementProperties: {
+                  pageObjectId: slideId,
+                  size: {
+                    width: { magnitude: 620, unit: "PT" },
+                    height: { magnitude: 70, unit: "PT" },
+                  },
+                  transform: {
+                    scaleX: 1,
+                    scaleY: 1,
+                    translateX: 48,
+                    translateY: 48,
+                    unit: "PT",
+                  },
+                },
+              },
+            },
+            {
+              insertText: {
+                objectId: titleBoxId,
+                insertionIndex: 0,
+                text: title,
+              },
+            },
+            {
+              createShape: {
+                objectId: bodyBoxId,
+                shapeType: "TEXT_BOX",
+                elementProperties: {
+                  pageObjectId: slideId,
+                  size: {
+                    width: { magnitude: 620, unit: "PT" },
+                    height: { magnitude: 260, unit: "PT" },
+                  },
+                  transform: {
+                    scaleX: 1,
+                    scaleY: 1,
+                    translateX: 48,
+                    translateY: 140,
+                    unit: "PT",
+                  },
+                },
+              },
+            },
+            {
+              insertText: {
+                objectId: bodyBoxId,
+                insertionIndex: 0,
+                text: prompt,
+              },
+            },
+          ],
+        }),
+      },
+      "google",
+    );
+  }
+  return getGoogleFile(created.presentationId);
+}
+
+export async function importGoogleWorkspaceFile(input: {
+  fileType: "docs" | "sheets" | "slides";
+  name: string;
+  base64: string;
+  mimeType?: string;
+}) {
+  const token = await googleAccessToken();
+  const boundary = `karsadesk_${randomUUID().replaceAll("-", "")}`;
+  const cleanName =
+    input.name.replace(/\.[^.]+$/, "").trim() || "KarsaDesk import";
+  const metadata = {
+    name: cleanName,
+    mimeType: googleMime(input.fileType),
+  };
+  const fileBytes = Buffer.from(input.base64, "base64");
+  const body = Buffer.concat([
+    Buffer.from(
+      `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: ${input.mimeType || googleUploadMime(input.fileType)}\r\n\r\n`,
+      "utf8",
+    ),
+    fileBytes,
+    Buffer.from(`\r\n--${boundary}--\r\n`, "utf8"),
+  ]);
+  const response = await fetch(
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": `multipart/related; boundary=${boundary}`,
+      },
+      body,
+    },
+  );
+  const result = (await response.json().catch(() => ({}))) as {
+    id?: string;
+    error?: { message?: string };
+  };
+  if (!response.ok || !result.id) {
+    if (response.status === 401 || response.status === 403)
+      updateConnectedAccount("google", {
+        status:
+          response.status === 401 ? "token_expired" : "missing_permission",
+      });
+    throw new Error(
+      result.error?.message ||
+        `Google Drive upload failed (${response.status})`,
+    );
+  }
+  return getGoogleFile(result.id);
 }
 
 export async function readGoogleFileText(file: ConnectedFile) {

@@ -18,7 +18,7 @@ UI berjalan di `http://127.0.0.1:3456`. Orchestrator lokal berjalan di `http://1
   - tombol Open ke editor asli Google/Figma;
   - AI Assistant per connected file dengan preview/action history;
   - action history per task.
-- Local Document Studio masih ada sebagai scratchpad lokal, bukan arah utama integrasi Google/Figma.
+- Google Workspace modal adalah login-first: lihat file Drive, buat Docs/Sheets/Slides dari prompt, atau import file lokal ke Google Drive.
 
 ## Prasyarat
 
@@ -146,9 +146,15 @@ Pilihan development paling cepat:
 OAuth Figma juga disiapkan dengan redirect:
 `http://127.0.0.1:4317/api/connect/figma/callback`
 
-## Local Document Studio scratchpad
+## Google Workspace modal
 
-Klik **Docs/PPT/Excel** di header untuk scratchpad lokal berbasis upload/prompt. Fitur ini berguna untuk draft cepat, tetapi bukan solusi utama Google/Figma. Untuk file asli yang terus hidup, gunakan **Connected Files** di task.
+Klik **Google Docs** di header untuk workflow dokumen utama. KarsaDesk tidak lagi menjadikan local upload sebagai mode utama:
+
+1. Login Google.
+2. Lihat/search Google Docs, Sheets, dan Slides asli dari Drive.
+3. Buat file baru dari prompt langsung di Google Docs/Sheets/Slides.
+4. Jika punya file lokal `.docx/.xlsx/.pptx`, gunakan **Import file to Google** supaya file dikirim ke Google Drive dan dikonversi menjadi file Google asli.
+5. Buka file di editor Google asli, lalu hubungkan ke task jika ingin AI action history/review.
 
 ## Data lokal
 

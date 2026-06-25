@@ -51,12 +51,14 @@ import {
   connectedProviderConfigStatus,
   connectFigmaPat,
   createAiFileActionWithContext,
+  createGoogleWorkspaceFile,
   figmaStartUrl,
   getFigmaFile,
   getGoogleFile,
   googleStartUrl,
   handleFigmaCallback,
   handleGoogleCallback,
+  importGoogleWorkspaceFile,
   listGoogleFiles,
   readConnectedFileContext,
   syncConnectedFileMetadata,
@@ -80,7 +82,7 @@ import { terminals } from "./terminal.js";
 
 const app = Fastify({
   logger: { level: process.env.NODE_ENV === "test" ? "silent" : "info" },
-  bodyLimit: 2 * 1024 * 1024,
+  bodyLimit: 40 * 1024 * 1024,
 });
 
 await app.register(cors, {
@@ -182,6 +184,29 @@ app.delete("/api/connect/:provider", async (request) => {
 app.get("/api/connect/google/files", async (request) => {
   const query = z.object({ q: z.string().default("") }).parse(request.query);
   return { files: await listGoogleFiles(query.q) };
+});
+
+app.post("/api/connect/google/files", async (request, reply) => {
+  const input = z
+    .object({
+      fileType: z.enum(["docs", "sheets", "slides"]),
+      title: z.string().min(1),
+      prompt: z.string().optional(),
+    })
+    .parse(request.body);
+  return reply.code(201).send(await createGoogleWorkspaceFile(input));
+});
+
+app.post("/api/connect/google/import", async (request, reply) => {
+  const input = z
+    .object({
+      fileType: z.enum(["docs", "sheets", "slides"]),
+      name: z.string().min(1),
+      base64: z.string().min(1),
+      mimeType: z.string().optional(),
+    })
+    .parse(request.body);
+  return reply.code(201).send(await importGoogleWorkspaceFile(input));
 });
 
 app.post("/api/documents/read", async (request) => {

@@ -79,6 +79,8 @@ export function Dashboard() {
   const [reviewGate, setReviewGate] = useState<"each_task" | "batch_end">(
     "batch_end",
   );
+  const [defaultProviderId, setDefaultProviderId] = useState("");
+  const [defaultModelId, setDefaultModelId] = useState("");
   const [projectDialog, setProjectDialog] = useState(false);
   const [taskDialog, setTaskDialog] = useState(false);
   const [smartDialog, setSmartDialog] = useState(false);
@@ -92,6 +94,14 @@ export function Dashboard() {
   const project = projects.find((item) => item.uid === projectUid) || null;
   const workspaceSession =
     sessions.find((item) => item.uid === workspaceSessionUid) || null;
+  const defaultProvider =
+    integration?.providers.find((item) => item.id === defaultProviderId) ||
+    integration?.providers[0] ||
+    null;
+  const defaultModel =
+    defaultProvider?.models.find((item) => item.id === defaultModelId) ||
+    defaultProvider?.models[0] ||
+    null;
 
   const loadOpenCodeProbe = useCallback(async (client: ApiClient) => {
     try {
@@ -198,6 +208,20 @@ export function Dashboard() {
     );
     return () => clearTimeout(timer);
   }, [api, projectUid, query, loadProject]);
+  useEffect(() => {
+    if (!integration?.providers.length) {
+      setDefaultProviderId("");
+      setDefaultModelId("");
+      return;
+    }
+    const provider =
+      integration.providers.find((item) => item.id === defaultProviderId) ||
+      integration.providers[0];
+    if (provider.id !== defaultProviderId) setDefaultProviderId(provider.id);
+    if (!provider.models.some((model) => model.id === defaultModelId)) {
+      setDefaultModelId(provider.models[0]?.id || "");
+    }
+  }, [integration, defaultProviderId, defaultModelId]);
 
   const visibleTasks = useMemo(() => tasks, [tasks]);
 
@@ -233,8 +257,8 @@ export function Dashboard() {
   }
   async function createQuickSession() {
     if (!api || !project) return null;
-    const provider = integration?.providers[0];
-    const model = provider?.models[0];
+    const provider = defaultProvider;
+    const model = defaultModel;
     if (!provider || !model) {
       setSessionDialog(true);
       toast.info(
@@ -774,6 +798,50 @@ export function Dashboard() {
                 >
                   →
                 </Button>
+              </div>
+              <div className="flex min-w-[220px] flex-1 flex-wrap items-center gap-1.5 rounded-xl border border-border bg-elevated/70 p-1 sm:flex-none">
+                <span className="hidden px-1.5 text-[10px] uppercase tracking-wider text-muted xl:inline">
+                  AI
+                </span>
+                <select
+                  value={defaultProvider?.id || ""}
+                  onChange={(event) => {
+                    setDefaultProviderId(event.target.value);
+                    const provider = integration?.providers.find(
+                      (item) => item.id === event.target.value,
+                    );
+                    setDefaultModelId(provider?.models[0]?.id || "");
+                    setSessionUid("");
+                  }}
+                  className="h-8 min-w-[120px] flex-1 rounded-lg border border-border bg-panel px-2 text-[11px] outline-none sm:flex-none"
+                  title="Default provider for new quick sessions"
+                >
+                  {!integration?.providers.length && (
+                    <option value="">No provider</option>
+                  )}
+                  {integration?.providers.map((provider) => (
+                    <option key={provider.id} value={provider.id}>
+                      {provider.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={defaultModel?.id || ""}
+                  onChange={(event) => {
+                    setDefaultModelId(event.target.value);
+                    setSessionUid("");
+                  }}
+                  disabled={!defaultProvider}
+                  className="h-8 min-w-[150px] flex-1 rounded-lg border border-border bg-panel px-2 text-[11px] outline-none sm:flex-none"
+                  title="Default model for new quick sessions"
+                >
+                  {!defaultProvider && <option value="">No model</option>}
+                  {defaultProvider?.models.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.name}
+                    </option>
+                  ))}
+                </select>
               </div>
               <select
                 value={sessionUid}

@@ -566,6 +566,10 @@ export function SmartPromptDialog({
   const [roughPrompt, setRoughPrompt] = useState("");
   const [providerId, setProviderId] = useState("");
   const [modelId, setModelId] = useState("");
+  const [promptProfile, setPromptProfile] = useState<
+    "coding" | "docs" | "figma" | "general"
+  >("coding");
+  const [customTuning, setCustomTuning] = useState("");
   const [draft, setDraft] = useState<SmartPromptResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [thinkingLogs, setThinkingLogs] = useState<SmartPromptLog[]>([]);
@@ -659,6 +663,8 @@ export function SmartPromptDialog({
           roughPrompt,
           providerId: provider?.id,
           modelId: modelId || undefined,
+          promptProfile,
+          customTuning: customTuning.trim() || undefined,
         },
       );
       const usedFallback = result.summary.toLowerCase().includes("fallback");
@@ -777,6 +783,37 @@ export function SmartPromptDialog({
               onChange={(e) => setRoughPrompt(e.target.value)}
               placeholder="Paste the rough human request here..."
             />
+            <div className="rounded-2xl border border-border bg-panel p-3">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-xs font-semibold">Smart Prompt tuning</p>
+                  <p className="mt-1 text-[11px] text-muted">
+                    Default tetap coding/task, tapi profile bisa disesuaikan
+                    untuk docs, Figma, atau gaya kerja pribadi.
+                  </p>
+                </div>
+                <select
+                  className="h-9 rounded-lg border border-border bg-elevated px-3 text-xs outline-none"
+                  value={promptProfile}
+                  onChange={(e) =>
+                    setPromptProfile(
+                      e.target.value as "coding" | "docs" | "figma" | "general",
+                    )
+                  }
+                >
+                  <option value="coding">Coding kanban</option>
+                  <option value="docs">Google Docs/Slides/Sheets</option>
+                  <option value="figma">Figma design</option>
+                  <option value="general">General assistant</option>
+                </select>
+              </div>
+              <textarea
+                className={`${field} min-h-24`}
+                value={customTuning}
+                onChange={(e) => setCustomTuning(e.target.value)}
+                placeholder="Optional: tulis gaya prompt kamu. Contoh: selalu buat step kecil, bahasa Indonesia santai, fokus UTS/paper, jangan pecah task kecuali perlu..."
+              />
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={label}>Connected provider</label>

@@ -322,6 +322,9 @@ app.post("/api/projects/:projectUid/tasks", async (request, reply) => {
     updatedAt: now,
   };
   saveTask(task);
+  void syncOutboxOnce().catch((error) =>
+    app.log.warn({ error }, "NocoDB task sync failed"),
+  );
   return reply.code(201).send(task);
 });
 
@@ -355,7 +358,11 @@ app.patch("/api/tasks/:taskUid", async (request) => {
       assignedSessionUid: z.string().uuid().nullable().optional(),
     })
     .parse(request.body);
-  return updateTask(taskUid, input);
+  const task = updateTask(taskUid, input);
+  void syncOutboxOnce().catch((error) =>
+    app.log.warn({ error }, "NocoDB task sync failed"),
+  );
+  return task;
 });
 
 function inferConnectedFile(input: {
@@ -612,15 +619,36 @@ app.post("/api/projects/:projectUid/smart-prompt", async (request) => {
       roughPrompt: z.string().min(10),
       providerId: optionalNonEmptyString,
       modelId: optionalNonEmptyString,
+      promptProfile: z
+        .enum(["coding", "docs", "figma", "general"])
+        .default("coding"),
+      customTuning: optionalNonEmptyString,
     })
     .parse(request.body);
   const project = getProject(projectUid);
   if (!project) throw app.httpErrors.notFound("Project not found");
   const context = await smartPromptContext(projectUid);
-  const prompt = `${activeTemplate()}\n\n${context}\n\nRough request:\n${input.roughPrompt}`;
+  const profileGuide = [
+    `Smart Prompt profile: ${input.promptProfile}.`,
+    input.promptProfile === "docs"
+      ? "Prioritize Google Docs/Slides/Sheets workflows: structure, outline, references, tables, slide sections, editable review, and clear file-action tasks."
+      : "",
+    input.promptProfile === "figma"
+      ? "Prioritize Figma design workflows: frames, components, layout, design review, handoff notes, and visual acceptance criteria."
+      : "",
+    input.promptProfile === "general"
+      ? "Prioritize clear problem-solving tasks without assuming the work is code-only."
+      : "",
+    input.customTuning
+      ? `User custom tuning:\n${input.customTuning}`
+      : "User custom tuning: none.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const prompt = `${activeTemplate()}\n\n${profileGuide}\n\n${context}\n\nRough request:\n${input.roughPrompt}`;
   if (!input.providerId || !input.modelId) {
     return fallbackSmartPrompt(
-      input.roughPrompt,
+      `${profileGuide}\n\n${input.roughPrompt}`,
       "No provider/model selected for Smart Prompt.",
     );
   }
@@ -634,7 +662,10 @@ app.post("/api/projects/:projectUid/smart-prompt", async (request) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     app.log.warn({ error: message }, "Smart prompt fell back to local planner");
-    return fallbackSmartPrompt(input.roughPrompt, message);
+    return fallbackSmartPrompt(
+      `${profileGuide}\n\n${input.roughPrompt}`,
+      message,
+    );
   }
 });
 
@@ -728,6 +759,9 @@ app.post("/api/projects/:projectUid/sessions", async (request, reply) => {
     ...input,
   });
   saveSession(session);
+  void syncOutboxOnce().catch((error) =>
+    app.log.warn({ error }, "NocoDB session sync failed"),
+  );
   return reply.code(201).send(session);
 });
 
@@ -1050,10 +1084,13 @@ app.post("/api/sessions/:sessionUid/continue", async (request, reply) => {
     .parse(request.params);
   const session = getSession(sessionUid);
   if (!session) throw app.httpErrors.notFound("Session not found");
-  if (session.status !== "review" || !session.pendingTaskUids.length)
+  if (
+    !["review", "paused"].includes(session.status) ||
+    !session.pendingTaskUids.length
+  )
     return reply
       .code(409)
-      .send({ error: "No reviewed queue is waiting to continue" });
+      .send({ error: "No paused or reviewed queue is waiting to continue" });
   updateSession(sessionUid, { status: "starting", activeTaskUid: null });
   void runBatch(sessionUid);
   return reply

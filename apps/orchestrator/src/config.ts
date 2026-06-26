@@ -38,6 +38,10 @@ export const config = {
       redirectUri:
         process.env.FIGMA_OAUTH_REDIRECT_URI?.trim() ||
         "http://127.0.0.1:4317/api/connect/figma/callback",
+      scopes: (process.env.FIGMA_OAUTH_SCOPES?.trim() || "current_user:read")
+        .split(/[,\s]+/)
+        .map((value) => value.trim())
+        .filter(Boolean),
       personalAccessToken:
         process.env.FIGMA_PERSONAL_ACCESS_TOKEN?.trim() || "",
     },

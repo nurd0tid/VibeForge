@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ArrowLeft,
@@ -9,6 +9,8 @@ import {
   CheckCircle2,
   CircleStop,
   Code2,
+  Database,
+  Gauge,
   FileDiff,
   FileClock,
   GitCommit,
@@ -18,6 +20,7 @@ import {
   MessageSquareText,
   Play,
   RefreshCw,
+  RotateCcw,
   ShieldCheck,
   TerminalSquare,
   XCircle,
@@ -58,6 +61,19 @@ function eventTone(type: NormalizedEvent["type"]) {
   return "border-border/70 bg-background/50 text-muted";
 }
 
+function shortText(value: string, max = 140) {
+  const text = value.replace(/\s+/g, " ").trim();
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+function estimateTokens(events: NormalizedEvent[]) {
+  const chars = events.reduce(
+    (total, event) => total + event.title.length + event.body.length,
+    0,
+  );
+  return Math.ceil(chars / 4);
+}
+
 function EventIcon({ type }: { type: NormalizedEvent["type"] }) {
   if (type === "assistant.message")
     return <MessageSquareText className="size-3.5 text-accent" />;
@@ -83,26 +99,48 @@ function RunStatusStrip({
   events: NormalizedEvent[];
 }) {
   const latest = events.at(-1);
+  const latestError = [...events]
+    .reverse()
+    .find((event) => event.type === "error");
   const pendingApproval = events.filter(
     (event) => event.type === "permission.request",
   ).length;
   const changed = diff?.files.length || 0;
+  const effectiveState =
+    session.status === "paused" && activeTask?.status === "failed"
+      ? "Paused after failure"
+      : session.status === "review"
+        ? "Ready for review"
+        : session.status;
   return (
     <section className="grid shrink-0 grid-cols-4 gap-2 max-xl:grid-cols-2 max-sm:grid-cols-1">
-      <div className="rounded-xl border border-border bg-panel p-3">
+      <div
+        className={cn(
+          "rounded-xl border bg-panel p-3",
+          session.status === "paused" || activeTask?.status === "failed"
+            ? "border-danger/30 bg-danger/5"
+            : session.status === "running"
+              ? "border-warning/30 bg-warning/5"
+              : "border-border",
+        )}
+      >
         <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-muted">
           {session.status === "running" ? (
             <Loader2 className="size-3.5 animate-spin text-warning" />
+          ) : session.status === "paused" || activeTask?.status === "failed" ? (
+            <XCircle className="size-3.5 text-danger" />
           ) : (
             <Activity className="size-3.5 text-accent" />
           )}
           Agent state
         </div>
         <p className="mt-2 text-sm font-semibold capitalize">
-          {session.status}
+          {effectiveState}
         </p>
         <p className="mt-1 truncate text-[11px] text-muted">
-          {latest?.title || "Waiting for a task run"}
+          {latestError
+            ? shortText(latestError.body || latestError.title)
+            : latest?.title || "Waiting for a task run"}
         </p>
       </div>
       <div className="rounded-xl border border-border bg-panel p-3">
@@ -145,6 +183,55 @@ function RunStatusStrip({
   );
 }
 
+function ContextMeter({
+  session,
+  events,
+}: {
+  session: Session;
+  events: NormalizedEvent[];
+}) {
+  const tokens = estimateTokens(events);
+  const softLimit = 128_000;
+  const percent = Math.min(100, Math.round((tokens / softLimit) * 100));
+  const compact = percent >= 70 || events.length >= 180;
+  return (
+    <section className="flex shrink-0 flex-wrap items-center gap-2 rounded-xl border border-border bg-[#090d12] px-3 py-2 text-[11px] text-slate-300">
+      <span className="flex items-center gap-1.5 rounded-lg bg-panel px-2 py-1 font-mono">
+        <Gauge className="size-3.5 text-accent" />
+        context {tokens.toLocaleString()} / {softLimit.toLocaleString()} tok
+      </span>
+      <span
+        className={cn(
+          "flex items-center gap-1.5 rounded-lg px-2 py-1 font-mono",
+          compact ? "bg-warning/15 text-warning" : "bg-success/10 text-success",
+        )}
+      >
+        <Database className="size-3.5" />
+        {compact ? "compact recommended" : "normal context"}
+      </span>
+      <div className="h-1.5 min-w-32 flex-1 overflow-hidden rounded-full bg-white/10">
+        <div
+          className={cn(
+            "h-full rounded-full transition-all",
+            percent >= 85
+              ? "bg-danger"
+              : percent >= 70
+                ? "bg-warning"
+                : "bg-accent",
+          )}
+          style={{ width: `${Math.max(4, percent)}%` }}
+        />
+      </div>
+      <span className="rounded-lg bg-panel px-2 py-1 font-mono">
+        {events.length} events
+      </span>
+      <span className="rounded-lg bg-panel px-2 py-1 font-mono">
+        {session.providerId}/{session.modelId}
+      </span>
+    </section>
+  );
+}
+
 function EventTimeline({
   events,
   selectedTaskUid,
@@ -152,31 +239,43 @@ function EventTimeline({
   events: NormalizedEvent[];
   selectedTaskUid: string | null;
 }) {
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
   const timeline = events.filter((event) => event.type !== "assistant.message");
+  useEffect(() => {
+    const node = scrollerRef.current;
+    if (!node) return;
+    node.scrollTop = node.scrollHeight;
+  }, [timeline.length]);
   return (
-    <section className="rounded-xl border border-border bg-[#080b10] text-slate-200">
-      <header className="flex items-center justify-between border-b border-white/10 px-3 py-2">
+    <section className="overflow-hidden rounded-xl border border-border bg-[#080b10] text-slate-200 shadow-[0_0_0_1px_rgba(255,255,255,0.02)]">
+      <header className="flex items-center justify-between border-b border-white/10 bg-white/[0.02] px-3 py-2">
         <span className="flex min-w-0 items-center gap-2 text-xs font-semibold">
           <TerminalSquare className="size-3.5 text-accent" />
-          <span className="truncate">Thinking & tool timeline</span>
+          <span className="truncate">Live thinking, search, tools</span>
         </span>
         <span className="font-mono text-[10px] text-slate-500">
           {timeline.length} event{timeline.length === 1 ? "" : "s"}
         </span>
       </header>
-      <div className="scrollbar-thin max-h-56 space-y-1 overflow-auto p-3 font-mono text-[11px]">
+      <div
+        ref={scrollerRef}
+        className="scrollbar-thin max-h-[340px] min-h-56 space-y-1 overflow-auto p-3 font-mono text-[11px]"
+      >
         {!timeline.length && (
           <div className="text-slate-500">
             No run events yet. Start a task to see agent steps here.
           </div>
         )}
-        {timeline.slice(-30).map((event) => {
+        {timeline.slice(-80).map((event) => {
           const active = selectedTaskUid && event.taskUid === selectedTaskUid;
           return (
             <div
               key={event.uid}
               className={cn(
-                "grid grid-cols-[52px_18px_minmax(0,1fr)] gap-2 rounded px-1 py-0.5 sm:grid-cols-[58px_18px_minmax(0,1fr)]",
+                "grid grid-cols-[64px_18px_minmax(0,1fr)] gap-2 rounded-lg border border-transparent px-2 py-1.5 sm:grid-cols-[72px_18px_minmax(0,1fr)]",
+                event.type === "error" && "border-danger/30 bg-danger/10",
+                event.type === "tool.start" && "bg-accent/5",
+                event.type === "tool.result" && "bg-success/5",
                 active && "bg-accent/10",
               )}
             >
@@ -184,12 +283,14 @@ function EventTimeline({
                 {new Date(event.createdAt).toLocaleTimeString()}
               </span>
               <EventIcon type={event.type} />
-              <span className="min-w-0">
-                <span className="text-slate-100">{event.title}</span>
+              <span className="min-w-0 break-words">
+                <span className="font-semibold text-slate-100">
+                  {event.title}
+                </span>
                 {event.body && (
                   <span className="text-slate-500">
-                    {" "}
-                    — {event.body.split("\n")[0].slice(0, 120)}
+                    {" — "}
+                    {shortText(event.body.split("\n")[0], 180)}
                   </span>
                 )}
               </span>
@@ -200,7 +301,6 @@ function EventTimeline({
     </section>
   );
 }
-
 export function SessionWorkspace({
   api,
   project,
@@ -368,6 +468,33 @@ export function SessionWorkspace({
       toast.error(error instanceof Error ? error.message : String(error));
     }
   }
+  async function continueQueue() {
+    try {
+      await api.post(`/api/sessions/${session.uid}/continue`);
+      await onRefresh();
+      await load();
+      toast.success("Session queue resumed");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    }
+  }
+  async function retryActiveTask() {
+    const retryTask =
+      activeTask || sessionTasks.find((task) => task.status === "failed");
+    if (!retryTask) return toast.error("No failed task is selected");
+    try {
+      await api.post(`/api/sessions/${session.uid}/run`, {
+        mode: "selected",
+        taskUids: [retryTask.uid],
+        reviewGate: session.reviewGate,
+      });
+      await onRefresh();
+      await load();
+      toast.success(`Retrying KD-${retryTask.number}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    }
+  }
   async function submitReview(action: "continue" | "merge" = "merge") {
     if (!diff) return;
     setBusy(true);
@@ -480,6 +607,19 @@ export function SessionWorkspace({
             <RefreshCw className="size-3.5" />
             <span className="hidden sm:inline">Refresh</span>
           </Button>
+          {session.status === "review" &&
+            session.pendingTaskUids.length > 0 && (
+              <Button size="sm" onClick={() => void continueQueue()}>
+                <Play className="size-3.5" />
+                <span className="hidden sm:inline">Resume queue</span>
+              </Button>
+            )}
+          {(session.status === "paused" || activeTask?.status === "failed") && (
+            <Button size="sm" onClick={() => void retryActiveTask()}>
+              <RotateCcw className="size-3.5" />
+              <span className="hidden sm:inline">Retry task</span>
+            </Button>
+          )}
           {session.status === "running" && (
             <Button variant="danger" size="sm" onClick={() => void cancel()}>
               <CircleStop className="size-3.5" />
@@ -515,9 +655,10 @@ export function SessionWorkspace({
               diff={diff}
               events={events}
             />
+            <ContextMeter session={session} events={events} />
             <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_320px] gap-3 max-lg:grid-cols-1">
               <section className="scrollbar-thin overflow-auto rounded-xl border border-border bg-elevated">
-                <div className="mx-auto max-w-3xl space-y-3 p-4">
+                <div className="space-y-3 p-4">
                   <EventTimeline
                     events={events}
                     selectedTaskUid={selectedConsoleTaskUid}
@@ -621,7 +762,11 @@ export function SessionWorkspace({
                         key={task.uid}
                         onClick={() => setManualConsoleTaskUid(task.uid)}
                         className={cn(
-                          "w-full rounded-lg border bg-elevated p-2.5 text-left transition hover:border-accent/50",
+                          "w-full rounded-xl border bg-elevated p-3 text-left transition hover:border-accent/50",
+                          task.status === "failed" &&
+                            "border-danger/40 bg-danger/10",
+                          task.status === "running" &&
+                            "border-warning/40 bg-warning/10",
                           active
                             ? "border-accent shadow-sm ring-1 ring-accent/20"
                             : "border-border",
@@ -643,7 +788,19 @@ export function SessionWorkspace({
                           {task.status === "waiting_approval" && (
                             <Hourglass className="size-3 text-warning" />
                           )}
-                          <span className="ml-auto rounded bg-panel-strong px-1.5 py-0.5 font-mono text-[8px] uppercase text-muted">
+                          {task.status === "failed" && (
+                            <XCircle className="size-3 text-danger" />
+                          )}
+                          <span
+                            className={cn(
+                              "ml-auto rounded px-1.5 py-0.5 font-mono text-[8px] uppercase",
+                              task.status === "failed"
+                                ? "bg-danger/15 text-danger"
+                                : task.status === "running"
+                                  ? "bg-warning/15 text-warning"
+                                  : "bg-panel-strong text-muted",
+                            )}
+                          >
                             {task.status}
                           </span>
                         </div>
@@ -652,16 +809,21 @@ export function SessionWorkspace({
                         </p>
                         <p className="mt-2 line-clamp-2 text-[10px] leading-4 text-muted">
                           {latest
-                            ? `${latest.title}: ${latest.body || latest.type}`
+                            ? `${latest.title}: ${shortText(latest.body || latest.type, 90)}`
                             : "No agent event yet"}
                         </p>
-                        <div className="mt-2 flex items-center gap-1.5 text-[9px] text-muted">
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[9px] text-muted">
                           <span className="rounded bg-panel-strong px-1.5 py-0.5">
                             {eventsForTask.length} events
                           </span>
                           {task.uid === session.activeTaskUid && (
                             <span className="rounded bg-warning/10 px-1.5 py-0.5 text-warning">
                               active
+                            </span>
+                          )}
+                          {task.status === "failed" && (
+                            <span className="rounded bg-danger/10 px-1.5 py-0.5 text-danger">
+                              retry available
                             </span>
                           )}
                         </div>

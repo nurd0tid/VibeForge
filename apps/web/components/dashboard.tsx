@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bot,
   CheckCircle2,
@@ -88,6 +88,7 @@ export function Dashboard() {
   const [aiChatOpen, setAiChatOpen] = useState(true);
   const [sessionDialog, setSessionDialog] = useState(false);
   const [quickSessionBusy, setQuickSessionBusy] = useState(false);
+  const autoSessionProjectUid = useRef<string | null>(null);
   const [googleWorkspaceOpen, setGoogleWorkspaceOpen] = useState(false);
   const [figmaOpen, setFigmaOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(true);
@@ -255,7 +256,7 @@ export function Dashboard() {
       return next;
     });
   }
-  async function createQuickSession() {
+  const createQuickSession = useCallback(async () => {
     if (!api || !project) return null;
     const provider = defaultProvider;
     const model = defaultModel;
@@ -290,7 +291,8 @@ export function Dashboard() {
     } finally {
       setQuickSessionBusy(false);
     }
-  }
+  }, [api, defaultModel, defaultProvider, project, sessions.length]);
+
   async function ensureRunSession() {
     if (sessionUid) return sessionUid;
     if (sessions[0]) {
@@ -300,6 +302,28 @@ export function Dashboard() {
     const created = await createQuickSession();
     return created?.uid || null;
   }
+  useEffect(() => {
+    if (
+      !api ||
+      !project ||
+      sessions.length > 0 ||
+      !defaultProvider ||
+      !defaultModel ||
+      quickSessionBusy ||
+      autoSessionProjectUid.current === project.uid
+    )
+      return;
+    autoSessionProjectUid.current = project.uid;
+    void createQuickSession();
+  }, [
+    api,
+    createQuickSession,
+    project,
+    sessions.length,
+    defaultProvider,
+    defaultModel,
+    quickSessionBusy,
+  ]);
   async function run(
     mode: "next" | "selected" | "all",
     directTaskUids: string[] = [],

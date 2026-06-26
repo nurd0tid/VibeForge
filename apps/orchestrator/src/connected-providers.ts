@@ -37,7 +37,7 @@ const googleScopes = [
   "https://www.googleapis.com/auth/presentations",
 ];
 
-const figmaScopes = ["file_metadata:read", "file_content:read"];
+const figmaScopes = config.connectedProviders.figma.scopes;
 
 function key() {
   return createHash("sha256")

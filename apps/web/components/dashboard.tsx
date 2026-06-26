@@ -85,7 +85,7 @@ export function Dashboard() {
   const [taskDialog, setTaskDialog] = useState(false);
   const [smartDialog, setSmartDialog] = useState(false);
   const [smartPromptSeed, setSmartPromptSeed] = useState("");
-  const [aiChatOpen, setAiChatOpen] = useState(true);
+  const [aiChatOpen, setAiChatOpen] = useState(false);
   const [sessionDialog, setSessionDialog] = useState(false);
   const [quickSessionBusy, setQuickSessionBusy] = useState(false);
   const autoSessionProjectUid = useRef<string | null>(null);
@@ -223,6 +223,35 @@ export function Dashboard() {
       setDefaultModelId(provider.models[0]?.id || "");
     }
   }, [integration, defaultProviderId, defaultModelId]);
+
+  useEffect(() => {
+    if (!projectUid) return;
+    const saved = window.localStorage.getItem(
+      `karsadesk-default-ai:${projectUid}`,
+    );
+    if (!saved) return;
+    try {
+      const value = JSON.parse(saved) as {
+        providerId?: string;
+        modelId?: string;
+      };
+      setDefaultProviderId(value.providerId || "");
+      setDefaultModelId(value.modelId || "");
+    } catch {
+      // Ignore old/broken local preference values.
+    }
+  }, [projectUid]);
+
+  useEffect(() => {
+    if (!projectUid || !defaultProviderId || !defaultModelId) return;
+    window.localStorage.setItem(
+      `karsadesk-default-ai:${projectUid}`,
+      JSON.stringify({
+        providerId: defaultProviderId,
+        modelId: defaultModelId,
+      }),
+    );
+  }, [projectUid, defaultProviderId, defaultModelId]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -390,10 +419,11 @@ export function Dashboard() {
     if (!api) return;
     try {
       const result = await api.post<{ created: string[] }>("/api/nocodb/setup");
+      await api.post("/api/nocodb/sync-all");
       toast.success(
         result.created.length
           ? `Created ${result.created.length} NocoDB tables`
-          : "NocoDB schema is already current",
+          : "NocoDB schema is current and structured data synced",
       );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : String(error));
@@ -411,6 +441,7 @@ export function Dashboard() {
         onRefresh={async () => {
           await loadProject(api, project.uid);
         }}
+        providers={integration?.providers || []}
       />
     );
 
@@ -998,12 +1029,14 @@ export function Dashboard() {
         open={googleWorkspaceOpen}
         onOpenChange={setGoogleWorkspaceOpen}
         api={api}
+        selectedTask={selectedTask}
       />
       <FigmaLiveModal
         open={figmaOpen}
         onOpenChange={setFigmaOpen}
         api={api}
         project={project}
+        selectedTask={selectedTask}
       />
     </div>
   );

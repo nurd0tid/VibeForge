@@ -31,6 +31,7 @@ import type {
   NormalizedEvent,
   Paginated,
   Project,
+  Provider,
   Session,
   Task,
 } from "@vk/contracts";
@@ -308,6 +309,7 @@ export function SessionWorkspace({
   tasks,
   onBack,
   onRefresh,
+  providers,
 }: {
   api: ApiClient;
   project: Project;
@@ -315,6 +317,7 @@ export function SessionWorkspace({
   tasks: Task[];
   onBack: () => void;
   onRefresh: () => Promise<void>;
+  providers: Provider[];
 }) {
   const [tab, setTab] = useState<Tab>("console");
   const [events, setEvents] = useState<NormalizedEvent[]>([]);
@@ -342,6 +345,10 @@ export function SessionWorkspace({
   const activeTask =
     tasks.find((task) => task.uid === session.activeTaskUid) ||
     sessionTasks.find((task) => task.status === "running") ||
+    null;
+  const selectedProvider =
+    providers.find((provider) => provider.id === session.providerId) ||
+    providers[0] ||
     null;
   async function load() {
     const [eventData, diffData, logData] = await Promise.all([
@@ -495,6 +502,40 @@ export function SessionWorkspace({
       toast.error(error instanceof Error ? error.message : String(error));
     }
   }
+  async function updateSessionAi(providerId: string, modelId?: string) {
+    if (!providerId) return;
+    const provider =
+      providers.find((item) => item.id === providerId) || selectedProvider;
+    const nextModelId = modelId || provider?.models[0]?.id || "";
+    if (!nextModelId) return toast.error("No model available for provider");
+    try {
+      await api.patch<Session>(`/api/sessions/${session.uid}`, {
+        providerId,
+        modelId: nextModelId,
+      });
+      await onRefresh();
+      toast.success("Session AI/model updated");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    }
+  }
+  async function deleteSession() {
+    if (
+      !window.confirm(
+        "Delete this local session/worktree? Tasks stay on the board, but this session console, local events, and managed worktree are removed.",
+      )
+    )
+      return;
+    try {
+      if (session.status === "running") await cancel();
+      await api.delete(`/api/sessions/${session.uid}`);
+      toast.success("Session deleted");
+      onBack();
+      await onRefresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    }
+  }
   async function submitReview(action: "continue" | "merge" = "merge") {
     if (!diff) return;
     setBusy(true);
@@ -607,6 +648,34 @@ export function SessionWorkspace({
             <RefreshCw className="size-3.5" />
             <span className="hidden sm:inline">Refresh</span>
           </Button>
+          <select
+            className="h-9 max-w-[180px] rounded-lg border border-border bg-elevated px-2 text-xs outline-none"
+            value={session.providerId}
+            disabled={session.status === "running"}
+            onChange={(event) => void updateSessionAi(event.target.value)}
+            title="Provider for retry/next task in this session"
+          >
+            {providers.map((provider) => (
+              <option key={provider.id} value={provider.id}>
+                {provider.name}
+              </option>
+            ))}
+          </select>
+          <select
+            className="h-9 max-w-[220px] rounded-lg border border-border bg-elevated px-2 text-xs outline-none"
+            value={session.modelId}
+            disabled={session.status === "running" || !selectedProvider}
+            onChange={(event) =>
+              void updateSessionAi(session.providerId, event.target.value)
+            }
+            title="Model for retry/next task in this session"
+          >
+            {selectedProvider?.models.map((model) => (
+              <option key={model.id} value={model.id}>
+                {model.name}
+              </option>
+            ))}
+          </select>
           {session.status === "review" &&
             session.pendingTaskUids.length > 0 && (
               <Button size="sm" onClick={() => void continueQueue()}>
@@ -624,6 +693,16 @@ export function SessionWorkspace({
             <Button variant="danger" size="sm" onClick={() => void cancel()}>
               <CircleStop className="size-3.5" />
               <span className="hidden sm:inline">Stop</span>
+            </Button>
+          )}
+          {session.status !== "running" && (
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => void deleteSession()}
+            >
+              <XCircle className="size-3.5" />
+              <span className="hidden sm:inline">Delete</span>
             </Button>
           )}
         </div>

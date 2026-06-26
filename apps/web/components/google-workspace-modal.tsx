@@ -13,8 +13,11 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type {
+  AiFileAction,
   ConnectedAccountPublic,
+  ConnectedFile,
   ConnectedProviderFile,
+  Task,
 } from "@vk/contracts";
 import type { ApiClient } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -94,10 +97,12 @@ export function GoogleWorkspaceModal({
   open,
   onOpenChange,
   api,
+  selectedTask,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   api: ApiClient | null;
+  selectedTask: Task | null;
 }) {
   const fileInput = useRef<HTMLInputElement | null>(null);
   const [accounts, setAccounts] = useState<AccountPayload | null>(null);
@@ -108,8 +113,15 @@ export function GoogleWorkspaceModal({
   const [prompt, setPrompt] = useState("");
   const [draftOnly, setDraftOnly] = useState(false);
   const [draftPreview, setDraftPreview] = useState("");
+  const [selectedFile, setSelectedFile] =
+    useState<ConnectedProviderFile | null>(null);
+  const [filePrompt, setFilePrompt] = useState("");
+  const [fileActionResult, setFileActionResult] = useState("");
   const [busy, setBusy] = useState(false);
   const google = accounts?.google;
+  const canReadDrive = Boolean(
+    google?.scopes.some((scope) => scope.includes("/auth/drive.readonly")),
+  );
 
   async function loadStatus() {
     if (!api) return;
@@ -125,9 +137,10 @@ export function GoogleWorkspaceModal({
     setBusy(true);
     try {
       const payload = await api.get<{ files: ConnectedProviderFile[] }>(
-        `/api/connect/google/files?q=${encodeURIComponent(nextQuery)}`,
+        `/api/connect/google/files?q=${encodeURIComponent(nextQuery)}&type=${kind}`,
       );
       setFiles(payload.files);
+      setSelectedFile((current) => current || payload.files[0] || null);
       if (!payload.files.length) toast.info("No Google files found");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : String(error));
@@ -143,7 +156,7 @@ export function GoogleWorkspaceModal({
 
   useEffect(() => {
     if (open && google?.connected) void loadFiles("");
-  }, [open, google?.connected]);
+  }, [open, google?.connected, kind]);
 
   useEffect(() => {
     function onMessage(event: MessageEvent) {
@@ -232,9 +245,9 @@ export function GoogleWorkspaceModal({
         },
       );
       setFiles((items) => [file, ...items]);
+      setSelectedFile(file);
       setDraftPreview("");
       toast.success(`${file.fileName} created in ${kindMeta[kind].label}`);
-      window.open(file.externalFileUrl, "_blank");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : String(error));
     } finally {
@@ -260,8 +273,46 @@ export function GoogleWorkspaceModal({
         },
       );
       setFiles((items) => [imported, ...items]);
+      setSelectedFile(imported);
       toast.success(`${file.name} imported to ${kindMeta[kind].label}`);
-      window.open(imported.externalFileUrl, "_blank");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function attachAndAskSelectedFile() {
+    if (!api || !selectedFile) return;
+    if (!selectedTask) {
+      toast.error("Pilih task dulu di board, baru attach file ke task itu.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const connected = await api.post<ConnectedFile>(
+        `/api/tasks/${selectedTask.uid}/connected-files/from-provider`,
+        {
+          provider: selectedFile.provider,
+          externalFileId: selectedFile.externalFileId,
+          externalFileUrl: selectedFile.externalFileUrl,
+          fileType: selectedFile.fileType,
+          fileName: selectedFile.fileName,
+        },
+      );
+      if (filePrompt.trim()) {
+        const action = await api.post<AiFileAction>(
+          `/api/tasks/${selectedTask.uid}/ai-file-actions`,
+          {
+            connectedFileUid: connected.uid,
+            prompt: filePrompt.trim(),
+            actionType: "plan",
+            applyMode: "preview",
+          },
+        );
+        setFileActionResult(action.resultSummary || action.errorMessage || "");
+      }
+      toast.success(`Attached to KD-${selectedTask.number}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : String(error));
     } finally {
@@ -273,7 +324,7 @@ export function GoogleWorkspaceModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[min(1120px,calc(100vw-24px))]">
+      <DialogContent className="max-h-[calc(100vh-24px)] w-[min(1120px,calc(100vw-24px))] overflow-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ActiveIcon className="size-5 text-accent" /> Google Workspace
@@ -284,7 +335,7 @@ export function GoogleWorkspaceModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid min-h-[620px] gap-4 lg:grid-cols-[340px_1fr]">
+        <div className="grid min-h-[min(620px,calc(100vh-180px))] gap-4 lg:grid-cols-[340px_1fr]">
           <aside className="space-y-4 rounded-2xl border border-border bg-panel p-4">
             <div className="rounded-xl border border-border bg-elevated p-3">
               <div className="flex items-center justify-between gap-2">
@@ -318,6 +369,13 @@ export function GoogleWorkspaceModal({
                 )}
                 {google?.connected ? "Reconnect Google" : "Login Google"}
               </Button>
+              {google?.connected && !canReadDrive && (
+                <p className="mt-2 rounded-lg border border-warning/30 bg-warning/10 p-2 text-[11px] leading-5 text-warning">
+                  Reconnect dibutuhkan supaya file Docs/Sheets/Slides lama di
+                  Drive kamu ikut muncul. Token lama hanya bisa lihat file yang
+                  dibuat/dipilih app.
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-3 gap-1 rounded-xl bg-elevated p-1">
@@ -450,54 +508,117 @@ export function GoogleWorkspaceModal({
               </pre>
             )}
 
-            <div className="scrollbar-thin min-h-0 flex-1 space-y-2 overflow-auto">
-              {!google?.connected && (
-                <div className="grid h-full place-items-center rounded-xl border border-dashed border-border p-8 text-center">
-                  <div>
-                    <ActiveIcon className="mx-auto mb-3 size-10 text-accent" />
-                    <h3 className="text-lg font-semibold">Login Google dulu</h3>
-                    <p className="mt-2 max-w-md text-sm leading-6 text-muted">
-                      Setelah login, KarsaDesk bisa menampilkan Google Docs,
-                      Sheets, dan Slides asli milik kamu, lalu bantu lewat AI.
-                    </p>
-                  </div>
-                </div>
-              )}
-              {google?.connected && !files.length && (
-                <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted">
-                  Belum ada file tampil. Search Drive atau buat file baru dari
-                  prompt.
-                </div>
-              )}
-              {files.map((file) => {
-                const Icon = fileIcon(file);
-                return (
-                  <article
-                    key={`${file.provider}:${file.externalFileId}`}
-                    className="flex items-center gap-3 rounded-xl border border-border bg-elevated p-3"
-                  >
-                    <Icon className="size-5 shrink-0 text-accent" />
-                    <div className="min-w-0 flex-1">
-                      <h3 className="truncate text-sm font-medium">
-                        {file.fileName}
+            <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
+              <div className="scrollbar-thin min-h-0 space-y-2 overflow-auto">
+                {!google?.connected && (
+                  <div className="grid h-full place-items-center rounded-xl border border-dashed border-border p-8 text-center">
+                    <div>
+                      <ActiveIcon className="mx-auto mb-3 size-10 text-accent" />
+                      <h3 className="text-lg font-semibold">
+                        Login Google dulu
                       </h3>
-                      <p className="mt-1 text-[11px] text-muted">
-                        {kindMeta[file.fileType as WorkspaceKind]?.label ||
-                          "Google file"}{" "}
-                        · {String(file.metadata.modifiedTime || "no date")}
+                      <p className="mt-2 max-w-md text-sm leading-6 text-muted">
+                        Setelah login, KarsaDesk bisa menampilkan Google Docs,
+                        Sheets, dan Slides asli milik kamu, lalu bantu lewat AI.
                       </p>
                     </div>
+                  </div>
+                )}
+                {google?.connected && !files.length && (
+                  <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted">
+                    Belum ada file tampil. Search Drive atau buat file baru dari
+                    prompt.
+                  </div>
+                )}
+                {files.map((file) => {
+                  const Icon = fileIcon(file);
+                  const selected =
+                    selectedFile?.externalFileId === file.externalFileId;
+                  return (
+                    <article
+                      key={`${file.provider}:${file.externalFileId}`}
+                      className={cn(
+                        "flex items-center gap-3 rounded-xl border bg-elevated p-3",
+                        selected ? "border-accent" : "border-border",
+                      )}
+                    >
+                      <Icon className="size-5 shrink-0 text-accent" />
+                      <button
+                        className="min-w-0 flex-1 text-left"
+                        onClick={() => setSelectedFile(file)}
+                      >
+                        <h3 className="truncate text-sm font-medium">
+                          {file.fileName}
+                        </h3>
+                        <p className="mt-1 text-[11px] text-muted">
+                          {kindMeta[file.fileType as WorkspaceKind]?.label ||
+                            "Google file"}{" "}
+                          · {String(file.metadata.modifiedTime || "no date")}
+                        </p>
+                      </button>
+                      <Button
+                        size="sm"
+                        variant={selected ? "default" : "secondary"}
+                        onClick={() => setSelectedFile(file)}
+                      >
+                        Select
+                      </Button>
+                    </article>
+                  );
+                })}
+              </div>
+              <aside className="min-h-0 rounded-xl border border-border bg-elevated p-3">
+                <p className="text-xs font-semibold">Selected file</p>
+                {selectedFile ? (
+                  <div className="mt-3 space-y-3">
+                    <div className="rounded-lg border border-border bg-panel p-3">
+                      <p className="truncate text-sm font-medium">
+                        {selectedFile.fileName}
+                      </p>
+                      <p className="mt-1 text-[11px] text-muted">
+                        Target task:{" "}
+                        {selectedTask
+                          ? `KD-${selectedTask.number} · ${selectedTask.title}`
+                          : "pilih task dulu di board"}
+                      </p>
+                    </div>
+                    <textarea
+                      className={`${field} min-h-28 text-xs`}
+                      value={filePrompt}
+                      onChange={(event) => setFilePrompt(event.target.value)}
+                      placeholder="Prompt untuk file ini. Contoh: ringkas dokumen, buat outline revisi, cek tabel, susun slide..."
+                    />
                     <Button
-                      size="sm"
+                      className="w-full"
+                      disabled={busy || !selectedTask}
+                      onClick={() => void attachAndAskSelectedFile()}
+                    >
+                      <Wand2 className="size-4" />
+                      Attach & ask AI
+                    </Button>
+                    <Button
+                      className="w-full"
+                      variant="secondary"
                       onClick={() =>
-                        window.open(file.externalFileUrl, "_blank")
+                        window.open(selectedFile.externalFileUrl, "_blank")
                       }
                     >
-                      <ExternalLink className="size-3.5" /> Open
+                      <ExternalLink className="size-4" /> Open original
                     </Button>
-                  </article>
-                );
-              })}
+                    {fileActionResult && (
+                      <pre className="scrollbar-thin max-h-40 overflow-auto whitespace-pre-wrap rounded-lg border border-border bg-background p-3 text-[11px] text-muted">
+                        {fileActionResult}
+                      </pre>
+                    )}
+                  </div>
+                ) : (
+                  <p className="mt-3 text-xs leading-5 text-muted">
+                    Pilih file dari daftar Drive. Setelah itu KarsaDesk bisa
+                    attach file ke task yang sedang dipilih dan membuat preview
+                    rencana perubahan.
+                  </p>
+                )}
+              </aside>
             </div>
           </section>
         </div>

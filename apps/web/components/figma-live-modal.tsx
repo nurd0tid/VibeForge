@@ -11,7 +11,13 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
-import type { ConnectedAccountPublic, Project } from "@vk/contracts";
+import type {
+  AiFileAction,
+  ConnectedAccountPublic,
+  ConnectedFile,
+  Project,
+  Task,
+} from "@vk/contracts";
 import type { ApiClient } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import {
@@ -48,15 +54,19 @@ export function FigmaLiveModal({
   onOpenChange,
   api,
   project,
+  selectedTask,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   api: ApiClient | null;
   project: Project | null;
+  selectedTask: Task | null;
 }) {
   const [accounts, setAccounts] = useState<AccountPayload | null>(null);
   const [pat, setPat] = useState("");
   const [fileUrl, setFileUrl] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [actionResult, setActionResult] = useState("");
   const [busy, setBusy] = useState(false);
   const fileKey = useMemo(() => figmaFileKey(fileUrl), [fileUrl]);
   const figma = accounts?.figma;
@@ -166,9 +176,47 @@ export function FigmaLiveModal({
     toast.success("Figma file key copied");
   }
 
+  async function attachAndAskFigma() {
+    if (!api || !fileKey) return;
+    if (!selectedTask) {
+      toast.error("Pilih task dulu di board, baru attach Figma ke task itu.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const connected = await api.post<ConnectedFile>(
+        `/api/tasks/${selectedTask.uid}/connected-files/from-provider`,
+        {
+          provider: "figma",
+          externalFileId: fileKey,
+          externalFileUrl: fileUrl || `https://www.figma.com/file/${fileKey}`,
+          fileType: "figma",
+          fileName: "Figma file",
+        },
+      );
+      if (prompt.trim()) {
+        const action = await api.post<AiFileAction>(
+          `/api/tasks/${selectedTask.uid}/ai-file-actions`,
+          {
+            connectedFileUid: connected.uid,
+            prompt: prompt.trim(),
+            actionType: "plan",
+            applyMode: "preview",
+          },
+        );
+        setActionResult(action.resultSummary || action.errorMessage || "");
+      }
+      toast.success(`Figma attached to KD-${selectedTask.number}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[min(860px,calc(100vw-24px))]">
+      <DialogContent className="max-h-[calc(100vh-24px)] w-[min(860px,calc(100vw-24px))] overflow-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Palette className="size-5 text-accent" /> Figma Live
@@ -293,18 +341,47 @@ export function FigmaLiveModal({
                 </Button>
               </div>
             </div>
+
+            <div className="rounded-xl border border-border bg-panel p-3">
+              <p className="text-xs font-semibold">Prompt selected Figma</p>
+              <p className="mt-1 text-[11px] leading-5 text-muted">
+                Target task:{" "}
+                {selectedTask
+                  ? `KD-${selectedTask.number} · ${selectedTask.title}`
+                  : "pilih task dulu di board"}
+              </p>
+              <textarea
+                className={`${field} mt-3 min-h-24 text-xs`}
+                value={prompt}
+                onChange={(event) => setPrompt(event.target.value)}
+                placeholder="Contoh: pahami flow design ini, buat review UX, susun perubahan untuk mobile, cek komponen yang perlu dirapikan..."
+              />
+              <Button
+                className="mt-3 w-full"
+                disabled={!fileKey || !selectedTask || busy}
+                onClick={() => void attachAndAskFigma()}
+              >
+                <PlugZap className="size-4" />
+                Attach to task & ask AI
+              </Button>
+              {actionResult && (
+                <pre className="scrollbar-thin mt-3 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg border border-border bg-background p-3 text-[11px] text-muted">
+                  {actionResult}
+                </pre>
+              )}
+            </div>
           </section>
 
           <aside className="space-y-3 rounded-2xl border border-border bg-panel p-4 text-sm leading-6 text-muted">
             <p className="font-medium text-foreground">Live workflow</p>
             <ol className="list-decimal space-y-1 pl-4 text-xs">
-              <li>Connect OAuth or PAT here.</li>
-              <li>Open or copy the Figma file URL/key.</li>
-              <li>Select a kanban task.</li>
-              <li>Use Connected Files to attach the Figma URL.</li>
+              <li>Connect OAuth/PAT sampai status connected.</li>
+              <li>Paste URL Figma file yang mau dibantu.</li>
+              <li>Pilih task di board sebagai target pekerjaan.</li>
+              <li>Klik Attach to task & ask AI.</li>
               <li>
-                AI can read metadata/tree context and prepare reviewable
-                actions.
+                AI membaca metadata/tree Figma dan membuat preview rencana
+                perubahan untuk task itu.
               </li>
             </ol>
             <div className="rounded-xl border border-success/30 bg-success/10 p-3 text-xs text-success">

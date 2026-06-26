@@ -31,6 +31,7 @@ const oauthStates = new Map<string, OAuthState>();
 const localUserId = "local-user";
 
 const googleScopes = [
+  "https://www.googleapis.com/auth/drive.readonly",
   "https://www.googleapis.com/auth/drive.file",
   "https://www.googleapis.com/auth/documents",
   "https://www.googleapis.com/auth/spreadsheets",
@@ -499,16 +500,17 @@ function googleOpenUrl(fileType: FileType, fileId: string) {
 
 export async function listGoogleFiles(
   query = "",
+  fileType?: "docs" | "sheets" | "slides",
 ): Promise<ConnectedProviderFile[]> {
   const token = await googleAccessToken();
-  const filters = [
-    "trashed = false",
-    `(${[
-      `mimeType = '${googleMime("docs")}'`,
-      `mimeType = '${googleMime("sheets")}'`,
-      `mimeType = '${googleMime("slides")}'`,
-    ].join(" or ")})`,
-  ];
+  const mimeFilters = fileType
+    ? [`mimeType = '${googleMime(fileType)}'`]
+    : [
+        `mimeType = '${googleMime("docs")}'`,
+        `mimeType = '${googleMime("sheets")}'`,
+        `mimeType = '${googleMime("slides")}'`,
+      ];
+  const filters = ["trashed = false", `(${mimeFilters.join(" or ")})`];
   const trimmed = query.trim().replace(/'/g, "\\'");
   if (trimmed) filters.push(`name contains '${trimmed}'`);
   const url = new URL("https://www.googleapis.com/drive/v3/files");

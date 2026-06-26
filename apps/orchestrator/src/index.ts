@@ -24,6 +24,7 @@ import {
   activeTemplate,
   detachConnectedFile,
   deleteConnectedAccount,
+  deleteSessionLocal,
   getConnectedFile,
   getProject,
   getSession,
@@ -73,6 +74,7 @@ import {
   pickFolderNative,
   openInVsCode,
   paginateDiff,
+  removeManagedWorktree,
   squashMerge,
 } from "./git.js";
 import { eventHub } from "./event-hub.js";
@@ -188,8 +190,13 @@ app.delete("/api/connect/:provider", async (request) => {
 });
 
 app.get("/api/connect/google/files", async (request) => {
-  const query = z.object({ q: z.string().default("") }).parse(request.query);
-  return { files: await listGoogleFiles(query.q) };
+  const query = z
+    .object({
+      q: z.string().default(""),
+      type: z.enum(["docs", "sheets", "slides"]).optional(),
+    })
+    .parse(request.query);
+  return { files: await listGoogleFiles(query.q, query.type) };
 });
 
 app.post("/api/connect/google/files", async (request, reply) => {
@@ -785,6 +792,48 @@ app.post("/api/sessions/:sessionUid/open-vscode", async (request) => {
   return { ok: true };
 });
 
+app.patch("/api/sessions/:sessionUid", async (request) => {
+  const { sessionUid } = z
+    .object({ sessionUid: z.string().uuid() })
+    .parse(request.params);
+  const input = z
+    .object({
+      providerId: optionalNonEmptyString,
+      modelId: optionalNonEmptyString,
+      agentMode: z.enum(["plan", "build"]).optional(),
+      permissionMode: z.enum(["supervised", "auto"]).optional(),
+      reviewGate: z.enum(["each_task", "batch_end"]).optional(),
+    })
+    .parse(request.body);
+  const session = getSession(sessionUid);
+  if (!session) throw app.httpErrors.notFound("Session not found");
+  if (["running", "starting"].includes(session.status))
+    throw app.httpErrors.conflict("Pause the session before changing AI/model");
+  const updated = updateSession(sessionUid, input);
+  void syncOutboxOnce().catch((error) =>
+    app.log.warn({ error }, "NocoDB session sync failed"),
+  );
+  return updated;
+});
+
+app.delete("/api/sessions/:sessionUid", async (request) => {
+  const { sessionUid } = z
+    .object({ sessionUid: z.string().uuid() })
+    .parse(request.params);
+  const session = getSession(sessionUid);
+  if (!session) throw app.httpErrors.notFound("Session not found");
+  if (["running", "starting"].includes(session.status))
+    await openCode.cancel(session);
+  await openCode.stop(sessionUid);
+  terminals.stop(sessionUid);
+  const project = getProject(session.projectUid);
+  if (!project) throw app.httpErrors.notFound("Project not found");
+  if (fs.existsSync(session.worktreePath))
+    await removeManagedWorktree(project, session);
+  deleteSessionLocal(sessionUid);
+  return { ok: true };
+});
+
 app.get("/api/sessions/:sessionUid/events", async (request) => {
   const { sessionUid } = z
     .object({ sessionUid: z.string().uuid() })
@@ -1289,6 +1338,16 @@ app.get("/api/projects/:projectUid/daily-logs", async (request) => {
 app.get("/api/nocodb/status", async () => nocoHealth());
 app.post("/api/nocodb/setup", async () => setupNocoDb());
 app.post("/api/nocodb/sync", async () => syncOutboxOnce());
+app.post("/api/nocodb/sync-all", async () => {
+  for (const project of listProjects()) {
+    saveProject(project);
+    for (const task of listAllTasks(project.uid)) saveTask(task);
+    for (const session of listSessions(project.uid)) saveSession(session);
+    for (const log of listDailyLogs(project.uid, 1, 500).items)
+      saveDailyLog(log);
+  }
+  return syncOutboxOnce();
+});
 
 app.get("/ws/events", { websocket: true }, (socket, request) => {
   const query = z

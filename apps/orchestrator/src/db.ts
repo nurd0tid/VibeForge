@@ -286,6 +286,18 @@ export function updateSession(uid: string, values: Partial<Session>): Session {
   return session;
 }
 
+export function deleteSessionLocal(uid: string) {
+  const now = new Date().toISOString();
+  db.update(schema.tasks)
+    .set({ assignedSessionUid: null, updatedAt: now })
+    .where(eq(schema.tasks.assignedSessionUid, uid))
+    .run();
+  db.delete(schema.events).where(eq(schema.events.sessionUid, uid)).run();
+  db.delete(schema.reviews).where(eq(schema.reviews.sessionUid, uid)).run();
+  db.delete(schema.dailyLogs).where(eq(schema.dailyLogs.sessionUid, uid)).run();
+  db.delete(schema.sessions).where(eq(schema.sessions.uid, uid)).run();
+}
+
 export function addEvent(event: NormalizedEvent) {
   db.insert(schema.events).values(event).run();
 }
@@ -347,7 +359,10 @@ export function saveReview(value: typeof schema.reviews.$inferInsert) {
 }
 
 export function saveDailyLog(value: typeof schema.dailyLogs.$inferInsert) {
-  db.insert(schema.dailyLogs).values(value).run();
+  db.insert(schema.dailyLogs)
+    .values(value)
+    .onConflictDoUpdate({ target: schema.dailyLogs.uid, set: value })
+    .run();
   enqueue(
     "vk_daily_logs",
     value.uid,
@@ -361,7 +376,7 @@ export function listDailyLogs(projectUid: string, page = 1, pageSize = 30) {
     .from(schema.dailyLogs)
     .where(eq(schema.dailyLogs.projectUid, projectUid))
     .orderBy(desc(schema.dailyLogs.createdAt))
-    .all();
+    .all() as Array<typeof schema.dailyLogs.$inferSelect>;
   const safeSize = Math.min(100, Math.max(10, pageSize));
   const offset = (Math.max(1, page) - 1) * safeSize;
   return {

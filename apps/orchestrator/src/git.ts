@@ -270,6 +270,17 @@ export async function discardManagedChanges(session: Session) {
   await runGit(["clean", "-fd"], resolved);
 }
 
+export async function removeManagedWorktree(
+  project: Project,
+  session: Session,
+) {
+  const resolved = path.resolve(session.worktreePath);
+  const root = path.resolve(config.worktreeDir) + path.sep;
+  if (!resolved.startsWith(root))
+    throw new Error("Refusing to remove a non-managed worktree");
+  await runGit(["worktree", "remove", "--force", resolved], project.localPath);
+}
+
 export async function squashMerge(
   project: Project,
   session: Session,

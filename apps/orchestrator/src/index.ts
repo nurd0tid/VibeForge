@@ -1008,16 +1008,33 @@ app.post("/api/sessions/:sessionUid/run", async (request, reply) => {
   if (["running", "starting"].includes(session.status))
     return reply.code(409).send({ error: "Session is already running" });
   let taskUids = input.taskUids;
-  const ready = listAllTasks(session.projectUid).filter(
-    (task) => task.status === "ready" || task.status === "failed",
+  const runnableStatuses = new Set(["backlog", "ready", "failed"]);
+  const ready = listAllTasks(session.projectUid).filter((task) =>
+    runnableStatuses.has(task.status),
   );
   if (input.mode === "next")
     taskUids = ready.slice(0, 1).map((task) => task.uid);
   if (input.mode === "all") taskUids = ready.map((task) => task.uid);
   if (!taskUids.length)
-    return reply.code(400).send({ error: "No tasks are ready to run" });
+    return reply
+      .code(400)
+      .send({ error: "No runnable tasks found. Add or select a task first." });
+  const tasksByUid = new Map(
+    listAllTasks(session.projectUid).map((task) => [task.uid, task]),
+  );
+  for (const uid of taskUids) {
+    const task = tasksByUid.get(uid);
+    if (!task)
+      return reply.code(400).send({ error: `Task ${uid} was not found` });
+    if (task.projectUid !== session.projectUid)
+      return reply.code(400).send({ error: "Task belongs to another project" });
+    if (["running", "waiting_approval", "done"].includes(task.status))
+      return reply.code(409).send({
+        error: `Task KD-${task.number} is ${task.status} and cannot be queued`,
+      });
+  }
   for (const uid of taskUids)
-    updateTask(uid, { assignedSessionUid: sessionUid });
+    updateTask(uid, { assignedSessionUid: sessionUid, status: "ready" });
   updateSession(sessionUid, {
     pendingTaskUids: taskUids,
     reviewGate: input.reviewGate,

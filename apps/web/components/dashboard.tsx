@@ -85,6 +85,7 @@ export function Dashboard() {
   const [smartPromptSeed, setSmartPromptSeed] = useState("");
   const [aiChatOpen, setAiChatOpen] = useState(true);
   const [sessionDialog, setSessionDialog] = useState(false);
+  const [quickSessionBusy, setQuickSessionBusy] = useState(false);
   const [googleWorkspaceOpen, setGoogleWorkspaceOpen] = useState(false);
   const [figmaOpen, setFigmaOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(true);
@@ -230,23 +231,77 @@ export function Dashboard() {
       return next;
     });
   }
-  async function run(mode: "next" | "selected" | "all") {
-    if (!api || !sessionUid)
-      return toast.error("Create or select an execution session first");
+  async function createQuickSession() {
+    if (!api || !project) return null;
+    const provider = integration?.providers[0];
+    const model = provider?.models[0];
+    if (!provider || !model) {
+      setSessionDialog(true);
+      toast.info(
+        "OpenCode provider/model belum kebaca. Cek login OpenCode atau pilih manual.",
+      );
+      return null;
+    }
+    setQuickSessionBusy(true);
     try {
-      await api.post(`/api/sessions/${sessionUid}/run`, {
-        mode,
-        taskUids: mode === "selected" ? [...checked] : [],
-        reviewGate,
-      });
+      const session = await api.post<Session>(
+        `/api/projects/${project.uid}/sessions`,
+        {
+          name: `Build session ${sessions.length + 1}`,
+          providerId: provider.id,
+          modelId: model.id,
+          agentMode: "build",
+          permissionMode: "supervised",
+          targetBranch: project.currentBranch,
+        },
+      );
+      setSessions((items) => [session, ...items]);
+      setSessionUid(session.uid);
+      toast.success(`Session ready: ${provider.name} · ${model.name}`);
+      return session;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+      setSessionDialog(true);
+      return null;
+    } finally {
+      setQuickSessionBusy(false);
+    }
+  }
+  async function ensureRunSession() {
+    if (sessionUid) return sessionUid;
+    if (sessions[0]) {
+      setSessionUid(sessions[0].uid);
+      return sessions[0].uid;
+    }
+    const created = await createQuickSession();
+    return created?.uid || null;
+  }
+  async function run(
+    mode: "next" | "selected" | "all",
+    directTaskUids: string[] = [],
+  ) {
+    if (!api || !projectUid) return;
+    const targetSessionUid = await ensureRunSession();
+    if (!targetSessionUid) return;
+    const selectedTaskUids =
+      directTaskUids.length > 0 ? directTaskUids : [...checked];
+    try {
+      const result = await api.post<{ accepted: true; taskUids: string[] }>(
+        `/api/sessions/${targetSessionUid}/run`,
+        {
+          mode,
+          taskUids: mode === "selected" ? selectedTaskUids : [],
+          reviewGate,
+        },
+      );
       toast.success(
         reviewGate === "each_task"
-          ? "Queue accepted — manual review after each task"
-          : "Queue accepted — review at batch end",
+          ? `${result.taskUids.length} task queued — manual review after each task`
+          : `${result.taskUids.length} task queued — review at batch end`,
       );
       setChecked(new Set());
-      await loadProject(api, projectUid!, taskPage, query);
-      setWorkspaceSessionUid(sessionUid);
+      await loadProject(api, projectUid, taskPage, query);
+      setWorkspaceSessionUid(targetSessionUid);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : String(error));
     }
@@ -649,6 +704,25 @@ export function Dashboard() {
                         <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted">
                           Execution
                         </h3>
+                        <Button
+                          className="mb-2 w-full justify-center"
+                          size="sm"
+                          disabled={
+                            ["running", "waiting_approval", "done"].includes(
+                              selectedTask.status,
+                            ) || quickSessionBusy
+                          }
+                          onClick={() =>
+                            void run("selected", [selectedTask.uid])
+                          }
+                        >
+                          {quickSessionBusy ? (
+                            <Loader2 className="size-3.5 animate-spin" />
+                          ) : (
+                            <Play className="size-3.5" />
+                          )}
+                          Run this task
+                        </Button>
                         {selectedTask.assignedSessionUid ? (
                           <button
                             onClick={() =>
@@ -734,10 +808,25 @@ export function Dashboard() {
                 </Button>
               )}
               <div className="ml-auto flex flex-wrap justify-end gap-1.5">
+                {!sessionUid && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={quickSessionBusy}
+                    onClick={() => void createQuickSession()}
+                  >
+                    {quickSessionBusy ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <Plus className="size-3.5" />
+                    )}
+                    Session
+                  </Button>
+                )}
                 <Button
                   variant="secondary"
                   size="sm"
-                  disabled={!sessionUid}
+                  disabled={quickSessionBusy}
                   onClick={() => void run("next")}
                 >
                   <CircleDot className="size-3.5" /> Next
@@ -745,14 +834,14 @@ export function Dashboard() {
                 <Button
                   variant="secondary"
                   size="sm"
-                  disabled={!sessionUid || !checked.size}
+                  disabled={quickSessionBusy || !checked.size}
                   onClick={() => void run("selected")}
                 >
                   <Play className="size-3.5" /> Selected
                 </Button>
                 <Button
                   size="sm"
-                  disabled={!sessionUid}
+                  disabled={quickSessionBusy}
                   onClick={() => void run("all")}
                 >
                   <Play className="size-3.5" /> Run all

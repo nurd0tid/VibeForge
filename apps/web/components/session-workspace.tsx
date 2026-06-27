@@ -25,7 +25,6 @@ import {
   TerminalSquare,
   XCircle,
 } from "lucide-react";
-import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
 import type {
   NormalizedEvent,
@@ -45,6 +44,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { DiffPanel, type DiffData } from "@/components/diff-panel";
+import { MarkdownViewer } from "@/components/markdown-viewer";
 import { TerminalPanel } from "@/components/terminal-panel";
 import { cn } from "@/lib/utils";
 
@@ -789,9 +789,12 @@ export function SessionWorkspace({
                         </time>
                       </div>
                       {event.type === "assistant.message" ? (
-                        <div className="prose prose-sm max-w-none text-[13px] leading-6 dark:prose-invert">
-                          <ReactMarkdown>{event.body}</ReactMarkdown>
-                        </div>
+                        <MarkdownViewer
+                          dense
+                          className="border-0 bg-transparent p-0"
+                        >
+                          {event.body}
+                        </MarkdownViewer>
                       ) : (
                         <pre className="whitespace-pre-wrap font-mono text-[11px] leading-5 text-muted">
                           {event.body}

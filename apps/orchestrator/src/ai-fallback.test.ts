@@ -10,7 +10,7 @@ describe("Smart Prompt local fallback", () => {
     expect(result.tasks).toHaveLength(1);
     expect(result.tasks[0].title).toMatch(/tmp-kanban|task lanjutan/i);
     expect(result.tasks[0].prompt).toContain("Ikuti `AGENTS.md`");
-    expect(result.tasks[0].prompt).toContain("## Daily log");
+    expect(result.tasks[0].prompt).toContain("Daily log:");
   });
 
   it("splits explicit lists into dependency-aware cards", () => {
@@ -22,6 +22,6 @@ describe("Smart Prompt local fallback", () => {
     );
     expect(result.tasks).toHaveLength(2);
     expect(result.tasks[1].dependsOn).toEqual([0]);
-    expect(result.tasks[0].prompt).toContain("## Acceptance criteria");
+    expect(result.tasks[0].prompt).toContain("Acceptance criteria:");
   });
 });

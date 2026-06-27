@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import type { Project, Provider } from "@vk/contracts";
 import type { ApiClient } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { MarkdownViewer } from "@/components/markdown-viewer";
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -228,9 +229,18 @@ export function AiBrainstormPanel({
                 </button>
               )}
             </div>
-            <pre className="whitespace-pre-wrap font-sans text-muted">
-              {message.content}
-            </pre>
+            {message.role === "assistant" ? (
+              <MarkdownViewer
+                dense
+                className="border-0 bg-transparent p-0 text-muted"
+              >
+                {message.content}
+              </MarkdownViewer>
+            ) : (
+              <p className="whitespace-pre-wrap text-muted">
+                {message.content}
+              </p>
+            )}
           </article>
         ))}
       </div>

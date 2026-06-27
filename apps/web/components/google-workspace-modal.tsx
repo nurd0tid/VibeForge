@@ -21,6 +21,7 @@ import type {
 } from "@vk/contracts";
 import type { ApiClient } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { MarkdownViewer } from "@/components/markdown-viewer";
 import {
   Dialog,
   DialogContent,
@@ -503,9 +504,12 @@ export function GoogleWorkspaceModal({
             </div>
 
             {draftPreview && (
-              <pre className="mb-3 max-h-44 overflow-auto whitespace-pre-wrap rounded-xl border border-border bg-background p-3 text-xs text-muted">
+              <MarkdownViewer
+                dense
+                className="scrollbar-thin mb-3 max-h-44 overflow-auto"
+              >
                 {draftPreview}
-              </pre>
+              </MarkdownViewer>
             )}
 
             <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -606,9 +610,12 @@ export function GoogleWorkspaceModal({
                       <ExternalLink className="size-4" /> Open original
                     </Button>
                     {fileActionResult && (
-                      <pre className="scrollbar-thin max-h-40 overflow-auto whitespace-pre-wrap rounded-lg border border-border bg-background p-3 text-[11px] text-muted">
+                      <MarkdownViewer
+                        dense
+                        className="scrollbar-thin max-h-40 overflow-auto"
+                      >
                         {fileActionResult}
-                      </pre>
+                      </MarkdownViewer>
                     )}
                   </div>
                 ) : (

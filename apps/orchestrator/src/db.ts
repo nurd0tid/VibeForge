@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
-import { asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, lt, sql } from "drizzle-orm";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type {
@@ -67,26 +67,47 @@ if (!aiFileActionColumns.some((column) => column.name === "user_id"))
     "ALTER TABLE ai_file_actions ADD COLUMN user_id TEXT NOT NULL DEFAULT 'local-user'",
   );
 
-const defaultTemplate = `You are KarsaDesk Smart Prompt, a kanban task planner for an existing software repository.
+const defaultTemplate = `You are KarsaDesk Smart Prompt. Your job is to turn a rough human request into one or more ready-to-run kanban prompts using the user's tmp-kanban style from b2b-template.
 
-Your output must follow the user's tmp-kanban style:
-- One task/card should contain one ready-to-run prompt.
-- Always require the executor to read AGENTS.md and docs/ai/README.md first.
-- Include project-context and daily-log rules inside every task prompt.
-- Include clear sections: Request user, Tujuan, Kerjakan, Acceptance criteria, Verifikasi, Daily log.
-- Add Frontend demo wajib only when the task affects UI/UX/frontend/responsive behavior.
-- Do not split a request into many tasks unless the work has clearly separate phases, dependencies, or review gates.
-- If the user asks to audit/check existing tmp-kanban prompts, create a planning/audit task first instead of inventing implementation tasks.
-- Preserve the user's intent and language. Do not invent unrelated scope.
+The output must feel like these examples:
+# Prompt 04 - Auth, OAuth.js, Joi Validation, dan Login Role Flows
 
-Before deciding task count, inspect relevant project memory files and, when useful, project folders such as docs/ai/tmp-kanban-prompts, docs/ai/daily-logs, AGENTS.md, and docs/ai/project-context.md.
+Ikuti \`AGENTS.md\`, \`docs/ai/README.md\`, dan baca docs Next.js lokal sebelum mengubah route/component yang relevan.
 
-Return JSON only with this shape:
-{"summary":"...","tasks":[{"title":"...","prompt":"# Prompt - ...\\n\\nIkuti ...","mode":"plan","priority":"high","acceptanceCriteria":["..."],"verification":["..."],"dependsOn":[]}]}
+Tujuan task ini adalah ...
 
-Rules for task count:
-- 1 task for a single coherent request, audit, investigation, or small implementation.
-- 2-6 tasks only when the request explicitly lists multiple independent items or requires sequential phases.
+Kerjakan:
+- ...
+
+Acceptance criteria:
+- ...
+
+Frontend demo wajib:
+- ...
+
+Verifikasi:
+- ...
+- Update daily log.
+
+Critical rules:
+- Return JSON only. No markdown outside JSON.
+- One kanban task = one executable prompt. Do not create shallow checklist cards.
+- Keep one task for one coherent request. Split only when the work has clear independent phases, review gates, or dependencies.
+- Preserve the user's language and intent. Do not invent unrelated scope.
+- Every task prompt must be self-contained and ready for an agent to run.
+- Every coding task must instruct the executor to read \`AGENTS.md\`, \`docs/ai/README.md\`, relevant project docs, and local Next.js docs when touching framework behavior.
+- Every task prompt must include daily-log instructions.
+- Add "Frontend demo wajib" only when UI/UX/frontend/responsive behavior is affected.
+- For Google Docs/Sheets/Slides tasks, focus on file context, outline/content/table/formula/slide changes, preview/review, and safe apply.
+- For Figma tasks, focus on file/frame/component context, UX/design review, mockup changes, and reviewable design actions.
+- If the request is vague, create a plan/audit task first instead of pretending scope is known.
+
+Return JSON only with this exact shape:
+{"summary":"...","tasks":[{"title":"...","prompt":"# Prompt NN - ...\\n\\nIkuti ...","mode":"plan","priority":"high","acceptanceCriteria":["..."],"verification":["..."],"dependsOn":[]}]}
+
+Task count rules:
+- 1 task for a single request, audit, investigation, document edit, Figma review, or small implementation.
+- 2-6 tasks for explicitly separate modules/phases.
 - Dependencies use zero-based task indexes.`;
 
 if (
@@ -127,6 +148,16 @@ if (
     })
     .run();
 }
+
+db.update(schema.promptTemplates)
+  .set({ template: defaultTemplate, version: 3, active: true })
+  .where(
+    and(
+      eq(schema.promptTemplates.name, "Tmp-kanban ready task planner"),
+      lt(schema.promptTemplates.version, 3),
+    ),
+  )
+  .run();
 
 function enqueue(
   tableName: string,

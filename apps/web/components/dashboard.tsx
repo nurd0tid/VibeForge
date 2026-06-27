@@ -50,6 +50,7 @@ import { FigmaLiveModal } from "@/components/figma-live-modal";
 import { ConnectedFilesPanel } from "@/components/connected-files-panel";
 import { AiBrainstormPanel } from "@/components/ai-brainstorm-panel";
 import { TaskActivityPreview } from "@/components/task-activity-preview";
+import { MarkdownViewer } from "@/components/markdown-viewer";
 import { useLocalTheme } from "@/components/providers";
 import { SessionWorkspace } from "@/components/session-workspace";
 import { cn } from "@/lib/utils";
@@ -742,25 +743,33 @@ export function Dashboard() {
                           </span>
                         </div>
                       </div>
-                      <div>
+                      <div className="space-y-2">
                         <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted">
                           Implementation prompt
                         </h3>
-                        <textarea
-                          value={selectedTask.refinedPrompt}
-                          onChange={(e) =>
-                            setSelectedTask({
-                              ...selectedTask,
-                              refinedPrompt: e.target.value,
-                            })
-                          }
-                          onBlur={() =>
-                            void patchTask(selectedTask, {
-                              refinedPrompt: selectedTask.refinedPrompt,
-                            })
-                          }
-                          className="min-h-44 w-full resize-y rounded-xl border border-border bg-panel p-3 text-xs leading-5 outline-none focus:border-accent"
-                        />
+                        <MarkdownViewer>
+                          {selectedTask.refinedPrompt}
+                        </MarkdownViewer>
+                        <details className="overflow-hidden rounded-xl border border-border bg-elevated">
+                          <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-muted hover:text-foreground">
+                            Edit markdown source
+                          </summary>
+                          <textarea
+                            value={selectedTask.refinedPrompt}
+                            onChange={(e) =>
+                              setSelectedTask({
+                                ...selectedTask,
+                                refinedPrompt: e.target.value,
+                              })
+                            }
+                            onBlur={() =>
+                              void patchTask(selectedTask, {
+                                refinedPrompt: selectedTask.refinedPrompt,
+                              })
+                            }
+                            className="min-h-52 w-full resize-y border-0 border-t border-border bg-background p-3 font-mono text-xs leading-5 outline-none focus:ring-2 focus:ring-inset focus:ring-accent/20"
+                          />
+                        </details>
                       </div>
                       <div>
                         <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted">

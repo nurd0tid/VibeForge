@@ -20,6 +20,7 @@ import type {
 } from "@vk/contracts";
 import type { ApiClient } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { MarkdownViewer } from "@/components/markdown-viewer";
 import {
   Dialog,
   DialogContent,
@@ -365,9 +366,12 @@ export function FigmaLiveModal({
                 Attach to task & ask AI
               </Button>
               {actionResult && (
-                <pre className="scrollbar-thin mt-3 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg border border-border bg-background p-3 text-[11px] text-muted">
+                <MarkdownViewer
+                  dense
+                  className="scrollbar-thin mt-3 max-h-40 overflow-auto"
+                >
                   {actionResult}
-                </pre>
+                </MarkdownViewer>
               )}
             </div>
           </section>

@@ -25,6 +25,7 @@ import type {
 } from "@vk/contracts";
 import type { ApiClient } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { MarkdownViewer } from "@/components/markdown-viewer";
 import { cn } from "@/lib/utils";
 
 type Payload = { files: ConnectedFile[]; actions: AiFileAction[] };
@@ -598,9 +599,12 @@ export function ConnectedFilesPanel({
                 </span>
               </div>
               <p className="text-muted">{action.prompt}</p>
-              <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap rounded bg-panel p-2 font-sans text-[10px] text-muted">
+              <MarkdownViewer
+                dense
+                className="scrollbar-thin mt-2 max-h-72 overflow-auto"
+              >
                 {action.resultSummary}
-              </pre>
+              </MarkdownViewer>
               {action.errorMessage && (
                 <p className="mt-2 text-[10px] text-danger">
                   {action.errorMessage}

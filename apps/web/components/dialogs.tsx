@@ -21,9 +21,9 @@ import type {
   SmartPromptResult,
   Task,
 } from "@vk/contracts";
-import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
 import type { ApiClient } from "@/lib/api";
+import { MarkdownViewer } from "@/components/markdown-viewer";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -570,6 +570,7 @@ export function SmartPromptDialog({
     "coding" | "docs" | "figma" | "general"
   >("coding");
   const [customTuning, setCustomTuning] = useState("");
+  const [tuningLoaded, setTuningLoaded] = useState(false);
   const [draft, setDraft] = useState<SmartPromptResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [thinkingLogs, setThinkingLogs] = useState<SmartPromptLog[]>([]);
@@ -578,6 +579,30 @@ export function SmartPromptDialog({
   );
   const [thinkingElapsed, setThinkingElapsed] = useState(0);
   const provider = providers.find((item) => item.id === providerId) || null;
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(
+        window.localStorage.getItem("karsadesk:smart-prompt-tuning") || "null",
+      ) as {
+        profile?: "coding" | "docs" | "figma" | "general";
+        customTuning?: string;
+      } | null;
+      if (saved?.profile) setPromptProfile(saved.profile);
+      if (typeof saved?.customTuning === "string")
+        setCustomTuning(saved.customTuning);
+    } catch {
+      // Ignore malformed preferences and keep the safe defaults.
+    } finally {
+      setTuningLoaded(true);
+    }
+  }, []);
+  useEffect(() => {
+    if (!tuningLoaded) return;
+    window.localStorage.setItem(
+      "karsadesk:smart-prompt-tuning",
+      JSON.stringify({ profile: promptProfile, customTuning }),
+    );
+  }, [customTuning, promptProfile, tuningLoaded]);
   useEffect(() => {
     if (!open || !initialPrompt) return;
     setRoughPrompt(initialPrompt);
@@ -765,7 +790,7 @@ export function SmartPromptDialog({
   }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[min(1040px,calc(100vw-24px))]">
+      <DialogContent className="max-h-[calc(100vh-24px)] w-[min(1040px,calc(100vw-24px))] overflow-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="size-5 text-accent" /> Smart prompt
@@ -873,9 +898,12 @@ export function SmartPromptDialog({
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="rounded-lg bg-panel p-3 text-sm text-muted">
-              {draft.summary}
-            </div>
+            <section>
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+                Planning summary
+              </p>
+              <MarkdownViewer dense>{draft.summary}</MarkdownViewer>
+            </section>
             <SmartPromptThinkingConsole
               logs={thinkingLogs}
               elapsed={thinkingElapsed}
@@ -917,11 +945,7 @@ export function SmartPromptDialog({
                       </div>
                     </div>
                   </div>
-                  <div className="rounded-xl border border-border bg-background/60 p-4">
-                    <div className="prose prose-sm max-w-none text-[13px] leading-6 dark:prose-invert prose-headings:mb-2 prose-headings:mt-4 prose-h1:text-lg prose-h2:text-sm prose-ul:my-2 prose-li:my-0">
-                      <ReactMarkdown>{task.prompt}</ReactMarkdown>
-                    </div>
-                  </div>
+                  <MarkdownViewer>{task.prompt}</MarkdownViewer>
                   <div className="mt-3 grid gap-2 md:grid-cols-2">
                     <div className="rounded-lg border border-border bg-elevated p-3">
                       <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted">
@@ -946,7 +970,7 @@ export function SmartPromptDialog({
                   </div>
                   <details className="mt-3 rounded-lg border border-border bg-elevated">
                     <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-muted">
-                      Edit raw prompt markdown
+                      Edit markdown source
                     </summary>
                     <textarea
                       className={`${field} min-h-56 rounded-t-none border-0 bg-panel text-xs`}
@@ -1006,6 +1030,7 @@ export function SessionDialog({
     () => providers.find((item) => item.id === providerId) || providers[0],
     [providers, providerId],
   );
+
   useEffect(() => {
     if (provider && !providerId) setProviderId(provider.id);
   }, [provider, providerId]);

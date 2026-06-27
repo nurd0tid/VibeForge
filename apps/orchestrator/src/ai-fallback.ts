@@ -94,33 +94,35 @@ function buildPrompt({
   objective,
   work,
   frontend,
+  sequence,
 }: {
   title: string;
   userRequest: string;
   objective: string;
   work: string[];
   frontend: boolean;
+  sequence: number;
 }) {
   return [
-    `# Prompt - ${title}`,
+    `# Prompt ${String(sequence).padStart(2, "0")} - ${title}`,
     "",
     "Ikuti `AGENTS.md`, `docs/ai/README.md`, dan seluruh aturan project yang relevan sebelum mengubah apa pun.",
     "",
     "Jika project memakai Next.js versi baru, baca dokumentasi lokal di `node_modules/next/dist/docs/` sebelum menyentuh routing, metadata, proxy, loading, atau Server/Client Component.",
     "",
-    "## Request user",
+    "Request user:",
     "",
     userRequest.trim(),
     "",
-    "## Tujuan",
+    "Tujuan task ini adalah:",
     "",
     objective,
     "",
-    "## Kerjakan",
+    "Kerjakan:",
     "",
     ...work.map((item) => `- ${item}`),
     "",
-    "## Acceptance criteria",
+    "Acceptance criteria:",
     "",
     "- Hasil kerja langsung menjawab request user dan tidak melebar ke scope yang tidak diminta.",
     "- Semua perubahan mengikuti aturan `AGENTS.md`, AI memory, dan pola existing project.",
@@ -130,7 +132,7 @@ function buildPrompt({
     "",
     ...(frontend
       ? [
-          "## Frontend demo wajib",
+          "Frontend demo wajib:",
           "",
           "- Verifikasi desktop.",
           "- Verifikasi mobile/responsive.",
@@ -138,13 +140,13 @@ function buildPrompt({
           "",
         ]
       : []),
-    "## Verifikasi",
+    "Verifikasi:",
     "",
     "- Jalankan verifikasi paling relevan dan proporsional untuk project ini.",
     "- Minimal cek lint/typecheck/test/build jika tersedia dan sesuai dengan perubahan.",
     "- Jika command gagal karena issue lama, catat detailnya; jangan sembunyikan error.",
     "",
-    "## Daily log",
+    "Daily log:",
     "",
     "- Append ke `docs/ai/daily-logs/YYYY-MM-DD.md`; jangan overwrite section lama.",
     "- Catat prompt, plan, changed files, verification, result, status, blockers, dan next steps.",
@@ -154,10 +156,7 @@ function buildPrompt({
 function makeTask(userRequest: string, index: number, total: number) {
   const scope = inferScope(userRequest);
   const frontend = needsFrontendDemo(userRequest);
-  const title =
-    total === 1
-      ? scope.title
-      : `${String(index + 1).padStart(2, "0")} - ${titleFrom(userRequest, scope.title)}`;
+  const title = total === 1 ? scope.title : titleFrom(userRequest, scope.title);
   return {
     title,
     prompt: buildPrompt({
@@ -166,6 +165,7 @@ function makeTask(userRequest: string, index: number, total: number) {
       objective: scope.objective,
       work: scope.work,
       frontend,
+      sequence: index + 1,
     }),
     mode: looksLikeAudit(userRequest) ? ("plan" as const) : ("build" as const),
     priority: index === 0 ? ("high" as const) : ("medium" as const),
@@ -193,9 +193,11 @@ export function fallbackSmartPrompt(
   );
   return {
     summary: [
-      "KarsaDesk membuat draft lokal dengan format tmp-kanban karena AI planning call gagal atau timeout.",
-      `Reason: ${reason}`,
-      `Draft ini menghasilkan ${tasks.length} task sesuai scope request. Edit/reorder sebelum publish jika perlu.`,
+      "**KarsaDesk membuat draft lokal berformat tmp-kanban.**",
+      "",
+      `- **Reason:** ${reason}`,
+      `- **Draft:** ${tasks.length} task sesuai scope request.`,
+      "- Edit atau reorder sebelum publish jika perlu.",
     ].join("\n"),
     tasks,
   };

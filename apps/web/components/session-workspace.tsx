@@ -47,6 +47,7 @@ import { DiffPanel, type DiffData } from "@/components/diff-panel";
 import { MarkdownViewer } from "@/components/markdown-viewer";
 import { TerminalPanel } from "@/components/terminal-panel";
 import { cn } from "@/lib/utils";
+import { confirmAction } from "@/lib/sweet-alert";
 
 type Tab = "console" | "changes" | "terminal" | "logs";
 
@@ -521,12 +522,17 @@ export function SessionWorkspace({
     }
   }
   async function deleteSession() {
-    if (
-      !window.confirm(
-        "Delete this session and every task assigned to it? The active agent will be stopped, Running/Review cards will be removed, and structured records will also be deleted from NocoDB. This cannot be undone.",
-      )
-    )
+    const confirmed = await confirmAction({
+      title: "Delete session and assigned tasks?",
+      text: "The active agent will be stopped. Running/Review cards, local events, managed worktree, and structured NocoDB records will be deleted.",
+      confirmText: "Stop and delete",
+      cancelText: "Keep session",
+      danger: true,
+    });
+    if (!confirmed) {
+      toast.info("Session deletion cancelled");
       return;
+    }
     setDeleting(true);
     try {
       const result = await api.delete<{

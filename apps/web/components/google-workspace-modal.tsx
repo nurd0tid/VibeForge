@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { MarkdownViewer } from "@/components/markdown-viewer";
 import { WorkspaceAiPanel } from "@/components/workspace-ai-panel";
 import { cn } from "@/lib/utils";
+import { confirmAction, showActionError } from "@/lib/sweet-alert";
 
 type WorkspaceKind = "docs" | "sheets" | "slides";
 type AccountPayload = {
@@ -446,7 +447,17 @@ export function GoogleWorkspaceModal({
       toast.success(`AI revision prepared in KD-${targetTask.number}`);
     } catch (error) {
       setActionStage("failed");
-      toast.error(error instanceof Error ? error.message : String(error));
+      const detail = error instanceof Error ? error.message : String(error);
+      toast.error("Google revision preview could not be prepared");
+      const setupUrl = detail.match(/Setup URL:\s*(https:\/\/\S+)/i)?.[1];
+      await showActionError({
+        title: /disabled|propagating|has not been used/i.test(detail)
+          ? "Google API is not ready"
+          : "Google revision preparation failed",
+        text: detail,
+        actionText: "Open Google API setup",
+        actionUrl: setupUrl,
+      });
     } finally {
       setBusy(false);
     }
@@ -460,7 +471,16 @@ export function GoogleWorkspaceModal({
         : selectedFile.fileType === "sheets"
           ? "append the approved rows to the first sheet"
           : "add a new slide containing the approved revision";
-    if (!window.confirm(`KarsaDesk will ${behavior}. Continue?`)) return;
+    const confirmed = await confirmAction({
+      title: "Apply approved Google revision?",
+      text: `KarsaDesk will ${behavior}. Existing content will not be removed.`,
+      confirmText: "Apply revision",
+      cancelText: "Keep preview only",
+    });
+    if (!confirmed) {
+      toast.info("Google revision kept as preview only");
+      return;
+    }
     setBusy(true);
     setActionStage("thinking");
     try {
@@ -476,7 +496,17 @@ export function GoogleWorkspaceModal({
       toast.success("Approved AI revision applied to Google");
     } catch (error) {
       setActionStage("failed");
-      toast.error(error instanceof Error ? error.message : String(error));
+      const detail = error instanceof Error ? error.message : String(error);
+      toast.error("Google revision could not be applied");
+      const setupUrl = detail.match(/Setup URL:\s*(https:\/\/\S+)/i)?.[1];
+      await showActionError({
+        title: /disabled|propagating|has not been used/i.test(detail)
+          ? "Google API is not ready"
+          : "Google apply failed",
+        text: detail,
+        actionText: "Open Google API setup",
+        actionUrl: setupUrl,
+      });
     } finally {
       setBusy(false);
     }

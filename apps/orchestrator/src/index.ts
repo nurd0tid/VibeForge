@@ -433,7 +433,7 @@ app.post("/api/projects/:projectUid/tasks/delete", async (request) => {
     });
   }
   const result = deleteTasksLocal([...taskUids]);
-  await syncOutboxOnce().catch((error) =>
+  void syncOutboxOnce().catch((error) =>
     app.log.warn({ error }, "Task delete sync failed"),
   );
   return result;

@@ -434,6 +434,7 @@ async function apiJson<T>(
         provider,
         response.status,
         body?.error?.message || body?.message || body?.err,
+        url,
       ),
     );
   }
@@ -444,20 +445,48 @@ function normalizeProviderError(
   provider: Provider,
   status: number,
   message?: string,
+  requestUrl?: string,
 ) {
   const text = String(message || `${provider} API failed (${status})`);
   if (
     provider === "google" &&
     /has not been used|disabled|accessNotConfigured/i.test(text)
   ) {
+    const serviceFromMessage = text.match(
+      /apis\/api\/([a-z0-9.-]+)\/overview/i,
+    )?.[1];
+    const service =
+      serviceFromMessage ||
+      (requestUrl?.includes("docs.googleapis.com")
+        ? "docs.googleapis.com"
+        : requestUrl?.includes("sheets.googleapis.com")
+          ? "sheets.googleapis.com"
+          : requestUrl?.includes("slides.googleapis.com")
+            ? "slides.googleapis.com"
+            : requestUrl?.includes("drive")
+              ? "drive.googleapis.com"
+              : "");
+    const label =
+      service === "docs.googleapis.com"
+        ? "Google Docs API"
+        : service === "sheets.googleapis.com"
+          ? "Google Sheets API"
+          : service === "slides.googleapis.com"
+            ? "Google Slides API"
+            : service === "drive.googleapis.com"
+              ? "Google Drive API"
+              : "Required Google API";
+    const projectId = text.match(/[?&]project=([0-9]+)/i)?.[1];
+    const setupUrl = service
+      ? `https://console.cloud.google.com/apis/library/${service}${projectId ? `?project=${projectId}` : ""}`
+      : text.match(/https:\/\/[^\s]+/)?.[0] || "";
     return [
-      text,
+      `${label} is disabled or still propagating for the OAuth project${projectId ? ` ${projectId}` : ""}.`,
       "",
-      "Enable the required Google APIs for the OAuth project, then wait a few minutes and retry:",
-      "- Google Drive API",
-      "- Google Docs API",
-      "- Google Sheets API",
-      "- Google Slides API",
+      setupUrl ? `Setup URL: ${setupUrl}` : "",
+      "After enabling it, wait 2–10 minutes, reconnect Google if the OAuth scopes changed, then retry the same action.",
+      "",
+      `Original Google message: ${text}`,
     ].join("\n");
   }
   if (provider === "google" && /Invalid Value/i.test(text)) {
@@ -976,6 +1005,7 @@ export async function importGoogleWorkspaceFile(input: {
         response.status,
         result.error?.message ||
           `Google Drive upload failed (${response.status})`,
+        "https://www.googleapis.com/upload/drive/v3/files",
       ),
     );
   }
@@ -1006,6 +1036,7 @@ export async function readGoogleWorkspaceText(
         "google",
         response.status,
         `Google export failed (${response.status})`,
+        url.toString(),
       ),
     );
   }

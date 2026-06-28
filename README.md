@@ -126,6 +126,10 @@ Di Google Cloud Console:
    - Google Docs API
    - Google Sheets API
    - Google Slides API
+     Pastikan API diaktifkan pada project yang sama dengan OAuth Client ID. Jika
+     error menyebut project number tertentu, buka API Library menggunakan project
+     number tersebut. Propagasi biasanya membutuhkan 2–10 menit; setelah itu
+     reconnect Google dan tekan Retry.
 4. Buka **APIs & Services → OAuth consent screen**.
 5. Pilih mode sesuai kebutuhan:
    - **Testing** untuk lokal/private.

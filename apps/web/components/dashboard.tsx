@@ -55,6 +55,7 @@ import { MarkdownViewer } from "@/components/markdown-viewer";
 import { useLocalTheme } from "@/components/providers";
 import { SessionWorkspace } from "@/components/session-workspace";
 import { cn } from "@/lib/utils";
+import { confirmAction } from "@/lib/sweet-alert";
 
 type Integration = { probe: CliProbe; providers: Provider[] };
 
@@ -301,12 +302,38 @@ export function Dashboard() {
   }) {
     if (!api || !project) return;
     const count = input.taskUids?.length;
-    if (
-      !window.confirm(
-        `Delete ${count ? `${count} selected task(s)` : `all tasks in ${input.label}`}? Assigned running sessions will be paused and structured records will also be deleted from NocoDB.`,
-      )
-    )
+    const confirmed = await confirmAction({
+      title: count
+        ? `Delete ${count} selected task(s)?`
+        : `Clear ${input.label}?`,
+      text: "Assigned running sessions will be paused. Task records, reviews, file actions, and corresponding NocoDB rows will be deleted.",
+      confirmText: count ? "Delete selected" : `Clear ${input.label}`,
+      cancelText: "Keep tasks",
+      danger: true,
+    });
+    if (!confirmed) {
+      toast.info("Task deletion cancelled");
       return;
+    }
+    const optimisticUids = new Set(
+      input.taskUids?.length
+        ? input.taskUids
+        : tasks
+            .filter((task) => task.status === input.status)
+            .map((task) => task.uid),
+    );
+    const toastId = toast.loading("Deleting tasks and refreshing board…");
+    setTasks((items) => items.filter((task) => !optimisticUids.has(task.uid)));
+    setTaskTotal((value) => Math.max(0, value - optimisticUids.size));
+    setSelectedTask((current) =>
+      current && optimisticUids.has(current.uid) ? null : current,
+    );
+    setChecked((current) => {
+      const next = new Set(current);
+      for (const uid of optimisticUids) next.delete(uid);
+      return next;
+    });
+    setInspectorOpen(false);
     setQuickSessionBusy(true);
     try {
       const result = await api.post<{ deletedTasks: number }>(
@@ -317,15 +344,15 @@ export function Dashboard() {
           status: input.status,
         },
       );
-      setSelectedTask((current) =>
-        current && input.taskUids?.includes(current.uid) ? null : current,
-      );
-      setInspectorOpen(false);
-      setChecked(new Set());
-      await loadProject(api, project.uid, taskPage, query);
-      toast.success(`${result.deletedTasks} task(s) deleted`);
+      await loadProject(api, project.uid, 1, query);
+      toast.success(`${result.deletedTasks} task(s) deleted; board refreshed`, {
+        id: toastId,
+      });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error));
+      await loadProject(api, project.uid, 1, query).catch(() => undefined);
+      toast.error(error instanceof Error ? error.message : String(error), {
+        id: toastId,
+      });
     } finally {
       setQuickSessionBusy(false);
     }

@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "sweetalert2/dist/sweetalert2.min.css";
 
 :root {
   --background: #f4f3ef;
@@ -71,6 +72,20 @@ input,
 textarea,
 select {
   font: inherit;
+}
+
+.karsadesk-swal {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: 0 24px 80px rgb(0 0 0 / 28%);
+}
+.swal2-container {
+  backdrop-filter: blur(5px);
+}
+.swal2-html-container {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-align: left;
 }
 ::selection {
   background: color-mix(in srgb, var(--accent) 28%, transparent);

@@ -586,19 +586,23 @@ function FileTreeNode({
   depth: number;
   onFileClick: (path: string, name: string) => void;
 }) {
-  const [expanded, setExpanded] = useState(depth < 1);
-  const activeFilePath = useWorkspaceStore((s) => s.activeFilePath);
-  const collapseAllTrigger = useWorkspaceStore((s) => s.collapseAllTrigger);
+  const { expandedFolders, toggleFolder, activeFilePath, collapseAllTrigger } = useWorkspaceStore();
+  
+  // Default rule: root folder is NOT expanded automatically unless it's in the state explicitly.
+  // The user wanted folders to be default closed: "defaultnya di explorer setiap folder tuh jangan langsung kebuka itu ketutup".
+  const isExpanded = expandedFolders[node.path] ?? false;
+
   const isActive = !node.isDirectory && activeFilePath === node.path;
 
   const IGNORED_NAMES = ['node_modules', '.git', '.next', 'dist', 'build', '.cache', '.turbo', '__pycache__', '.DS_Store', 'coverage'];
   const isIgnored = node.name.startsWith('.') || IGNORED_NAMES.includes(node.name);
 
   useEffect(() => {
-    if (collapseAllTrigger > 0 && expanded) {
-      setTimeout(() => setExpanded(false), 0);
+    if (collapseAllTrigger > 0 && isExpanded) {
+      toggleFolder(node.path, false);
     }
-  }, [collapseAllTrigger, expanded]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collapseAllTrigger]);
 
   if (node.isDirectory) {
     return (
@@ -606,21 +610,21 @@ function FileTreeNode({
         <button
           className={`w-full flex items-center gap-1.5 min-h-[26px] leading-[1.5] hover:bg-[#2a2d2e] transition-colors ${isIgnored ? 'opacity-50' : 'text-[#cccccc]'}`}
           style={{ paddingLeft: `${depth * 16 + 8}px` }}
-          onClick={() => setExpanded(!expanded)}
+          onClick={() => toggleFolder(node.path, !isExpanded)}
         >
-          {expanded ? (
+          {isExpanded ? (
             <ChevronDown className="size-3 flex-shrink-0 text-[#cccccc]" />
           ) : (
             <ChevronRight className="size-3 flex-shrink-0 text-[#cccccc]" />
           )}
-          {expanded ? (
+          {isExpanded ? (
             <FolderOpen className="size-4 flex-shrink-0 text-[#dcb67a]" />
           ) : (
             <Folder className="size-4 flex-shrink-0 text-[#dcb67a]" />
           )}
           <span className="text-[13px] text-ellipsis overflow-hidden whitespace-nowrap text-left">{node.name}</span>
         </button>
-        {expanded && node.children && (
+        {isExpanded && node.children && (
           <div>
             {node.children.map((child) => (
               <FileTreeNode
@@ -1259,11 +1263,12 @@ export default function WorkspacePage() {
   const effectiveModelId = (selectedModelId && activeModels.find(m => m.id === selectedModelId)) ? selectedModelId : defaultModelId;
   const effectiveProviderName = getField((effectiveProvider || {}) as Record<string, unknown>, 'name', 'Name') || 'Provider';
 
+  const aiMessagesLen = aiMessages.length;
+
   useEffect(() => {
     if (effectiveProvider) {
       const ctxWindow = Number(getField(effectiveProvider as unknown as Record<string, unknown>, 'context_window', 'Context Window') || 128000);
       
-      // Better token estimation: include system prompt baseline (~500 tokens) + full stringified steps/content
       const systemPromptEst = 500;
       let totalChars = 0;
       aiMessages.forEach((m) => {
@@ -1280,7 +1285,7 @@ export default function WorkspacePage() {
       setContextUsage(estTokens, ctxWindow);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effectiveProviderId, effectiveModelId, aiMessages]);
+  }, [effectiveProviderId, effectiveModelId, aiMessagesLen]);
 
   const { data: fileTree = [], isLoading: isLoadingTree, refetch: refetchTree } = useQuery<FileNode[]>({
     queryKey: ['workspace-tree', projectPath],

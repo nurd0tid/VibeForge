@@ -55,6 +55,7 @@ interface WorkspaceState {
   contextLimit: number;
   isAutoCompactEnabled: boolean;
   pendingDiffs: Record<string, { original: string; modified: string }>;
+  expandedFolders: Record<string, boolean>;
 
   openFile: (path: string, name: string, content: string) => void;
   closeFile: (path: string) => void;
@@ -85,6 +86,8 @@ interface WorkspaceState {
   setAutoCompactEnabled: (enabled: boolean) => void;
   setPendingDiff: (path: string, original: string, modified: string) => void;
   clearPendingDiff: (path: string) => void;
+  toggleFolder: (path: string, expanded: boolean) => void;
+  collapseAllFolders: () => void;
 }
 
 const INITIAL_MESSAGES: AiMessage[] = [
@@ -110,6 +113,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       contextLimit: 128000,
       isAutoCompactEnabled: false,
       pendingDiffs: {},
+      expandedFolders: {},
 
       openFile: (path, name, content) => {
         const existing = get().openFiles.find((f) => f.path === path);
@@ -338,6 +342,16 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           return { pendingDiffs: next };
         });
       },
+
+      toggleFolder: (path, expanded) => {
+        set((state) => ({
+          expandedFolders: { ...state.expandedFolders, [path]: expanded },
+        }));
+      },
+
+      collapseAllFolders: () => {
+        set({ expandedFolders: {} });
+      },
     }),
     {
       name: 'vibeforge-workspace',
@@ -348,6 +362,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         approvalMode: state.approvalMode,
         contextLimit: state.contextLimit,
         isAutoCompactEnabled: state.isAutoCompactEnabled,
+        expandedFolders: state.expandedFolders,
       }),
     }
   )

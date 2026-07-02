@@ -92,7 +92,7 @@ interface StreamResult {
   };
 }
 
-/** Stream LLM response — emit only clean prose chunks (not XML tool blocks) */
+/** Stream LLM response — stream clean prose in realtime, buffer XML tool blocks */
 async function readStreamWithEmit(
   body: ReadableStream<Uint8Array>,
   emitChunk: (delta: string) => void
@@ -102,8 +102,8 @@ async function readStreamWithEmit(
   let fullText = '';
   let buffer = '';
   let usage: StreamResult['usage'] = undefined;
-  let streamBuffer = ''; // accumulates for XML detection
-  let inToolBlock = false;
+  // We buffer text and only emit when we're sure it's not part of a tool block
+  let pending = '';
 
   while (true) {
     const { value, done } = await reader.read();
@@ -121,42 +121,24 @@ async function readStreamWithEmit(
         const delta = chunk.choices?.[0]?.delta?.content || '';
         if (delta) {
           fullText += delta;
-          streamBuffer += delta;
-
-          // Detect start of tool block — stop emitting
-          if (!inToolBlock && streamBuffer.includes('<tool_use>')) {
-            // Emit everything BEFORE the tool block
-            const idx = streamBuffer.indexOf('<tool_use>');
-            const before = streamBuffer.slice(0, idx);
+          pending += delta;
+          
+          // If a tool block is complete in pending, don't emit anything (tool blocks handled after)
+          // Otherwise emit clean text segments
+          if (pending.includes('<tool_use>')) {
+            // Found start of tool block - emit everything before it
+            const idx = pending.indexOf('<tool_use>');
+            const before = pending.slice(0, idx);
             if (before.trim()) emitChunk(before);
-            inToolBlock = true;
-          } else if (!inToolBlock) {
-            // No tool block — safe to emit but keep a small lookbehind buffer
-            // to avoid emitting partial '<tool_use' start
-            const safeLen = streamBuffer.length - 12; // length of '<tool_use>' 
-            if (safeLen > 0) {
-              const safe = streamBuffer.slice(0, safeLen);
-              if (safe) emitChunk(safe);
-              streamBuffer = streamBuffer.slice(safeLen);
-            }
+            pending = pending.slice(idx); // keep from <tool_use> onwards buffered
+          } else if (!pending.includes('<') || pending.indexOf('<') === pending.length - 1) {
+            // No XML start detected (or only at end which could be partial)
+            // Safe to emit all except last char if it ends with '<'
+            const safe = pending.endsWith('<') ? pending.slice(0, -1) : pending;
+            if (safe) emitChunk(safe);
+            pending = pending.endsWith('<') ? '<' : '';
           }
-
-          // Detect end of tool block — resume emitting
-          if (inToolBlock && streamBuffer.includes('</tool_use>')) {
-            const endIdx = streamBuffer.indexOf('</tool_use>') + '</tool_use>'.length;
-            // Check for more content after the tool block
-            const afterTool = streamBuffer.slice(endIdx);
-            inToolBlock = false;
-            streamBuffer = afterTool;
-            // Check if there's another tool block starting
-            if (afterTool.includes('<tool_use>')) {
-              const nextIdx = afterTool.indexOf('<tool_use>');
-              const between = afterTool.slice(0, nextIdx);
-              if (between.trim()) emitChunk(between);
-              inToolBlock = true;
-              streamBuffer = afterTool.slice(nextIdx);
-            }
-          }
+          // else: we might have partial '<tool' - keep buffering
         }
         if (chunk.usage) {
           usage = chunk.usage;
@@ -166,9 +148,10 @@ async function readStreamWithEmit(
       }
     }
   }
-  // Emit remaining non-tool content
-  if (!inToolBlock && streamBuffer.trim()) {
-    emitChunk(streamBuffer);
+  // Emit any remaining clean content (not tool blocks)
+  if (pending && !pending.includes('<tool_use>')) {
+    const clean = pending.replace(/<[^>]*>/g, '').trim();
+    if (clean) emitChunk(clean);
   }
   return { fullText, usage };
 }
@@ -275,14 +258,16 @@ TOOLS AVAILABLE (use these to interact with the project):
    Format: <tool_use><name>memory_write</name><args>{"file": "activeContext.md", "content": "## Current Focus\n..."}</args></tool_use>
 
 RULES:
+- YOU MUST USE TOOLS to interact with files. NEVER guess or make up file contents from memory.
+- ALWAYS use read_file to read actual file contents. ALWAYS use list_directory to explore folders.
 - ALWAYS read memory bank before starting work: run memory_list then memory_read for relevant files.
 - After completing any task: run memory_write to update activeContext.md, progress.md, and updateLog.md.
-- Do NOT make up file contents — always read them.
 - All paths are relative to project root.
-- Use list_directory first to understand structure.
 - After tool results, continue reasoning and answer the user.
 - Prefer memory_read over read_file for .vibeforge/memory-bank files.
 - If user types UMB, update memory, or sync memory: update all relevant memory files.
+- When you need to create a file, use write_file tool. When you need to edit, use edit_file tool.
+- IMPORTANT: Output your reasoning as normal text FIRST, then output tool_use blocks. Do not mix text inside tool_use blocks.
 
 When you need to use a tool, output the <tool_use> block. The system will execute it and return the result.`;
 

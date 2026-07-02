@@ -1651,8 +1651,14 @@ export default function WorkspacePage() {
                     }
                   }
                 }
-              } else if (eventType === 'content') {
+              } else if (eventType === 'content_stream') {
                 fullContent += data.delta || '';
+              } else if (eventType === 'content') {
+                if (data.replace) {
+                  fullContent = data.delta || '';
+                } else {
+                  fullContent += data.delta || '';
+                }
               } else if (eventType === 'usage') {
                 if (data.total) setContextUsage(data.total, contextLimit);
               }
@@ -1927,8 +1933,14 @@ export default function WorkspacePage() {
                     }
                   }
                 }
-              } else if (eventType === 'content') {
+              } else if (eventType === 'content_stream') {
                 fullContent += data.delta || '';
+              } else if (eventType === 'content') {
+                if (data.replace) {
+                  fullContent = data.delta || '';
+                } else {
+                  fullContent += data.delta || '';
+                }
               } else if (eventType === 'usage') {
                 if (data.total) setContextUsage(data.total, contextLimit);
               }

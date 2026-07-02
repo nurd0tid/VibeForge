@@ -92,8 +92,11 @@ interface StreamResult {
   };
 }
 
-/** Parse the LLM streaming response into a complete string and extract usage */
-async function readStream(body: ReadableStream<Uint8Array>): Promise<StreamResult> {
+/** Stream LLM response — emit content chunks realtime AND collect full text for tool parsing */
+async function readStreamWithEmit(
+  body: ReadableStream<Uint8Array>,
+  emitChunk: (delta: string) => void
+): Promise<StreamResult> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let fullText = '';
@@ -113,7 +116,11 @@ async function readStream(body: ReadableStream<Uint8Array>): Promise<StreamResul
       if (raw === '[DONE]') continue;
       try {
         const chunk = JSON.parse(raw);
-        fullText += chunk.choices?.[0]?.delta?.content || '';
+        const delta = chunk.choices?.[0]?.delta?.content || '';
+        if (delta) {
+          fullText += delta;
+          emitChunk(delta);
+        }
         if (chunk.usage) {
           usage = chunk.usage;
         }
@@ -348,8 +355,10 @@ When you need to use a tool, output the <tool_use> block. The system will execut
               break;
             }
 
-            // Read the full streamed response
-            const streamRes = await readStream(llmRes.body);
+            // Stream LLM response — emit content chunks realtime to frontend
+            const streamRes = await readStreamWithEmit(llmRes.body, (delta) => {
+              emit('content_stream', { delta });
+            });
             const responseText = streamRes.fullText;
             
             if (!responseText.trim()) {
@@ -374,25 +383,29 @@ When you need to use a tool, output the <tool_use> block. The system will execut
               emit('usage', { used: streamRes.usage.prompt_tokens, total: streamRes.usage.total_tokens });
             }
 
-            // Parse any tool calls from the response
+            // Parse any tool calls from the accumulated response
             const toolCalls = parseToolCalls(responseText);
 
             if (toolCalls.length === 0) {
-              // No tool calls — emit the final content and stop
+              // No tool calls — streaming already delivered the content.
+              // Just strip any accidental tool markup and record output.
               const cleanText = responseText
                 .replace(/<tool_use>[\s\S]*?<\/tool_use>/g, '')
                 .replace(/```tool[\s\S]*?```/g, '')
                 .trim();
               fullOutputText = cleanText;
-              emit('content', { delta: cleanText });
+              // Emit a replace event so frontend swaps streamed raw text with clean final text
+              emit('content', { delta: cleanText, replace: true });
               break;
             }
 
-            // Emit the thought (text before tool calls)
+            // Has tool calls — clear the raw streamed text (which included XML blocks)
+            // and replace with the clean thought text
             const thoughtText = responseText
               .replace(/<tool_use>[\s\S]*?<\/tool_use>/g, '')
               .replace(/```tool[\s\S]*?```/g, '')
               .trim();
+            emit('content', { delta: thoughtText, replace: true });
             if (thoughtText) {
               emit('thought', { text: thoughtText });
             }

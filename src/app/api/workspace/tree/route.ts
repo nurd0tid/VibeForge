@@ -9,29 +9,30 @@ export interface FileNode {
   path: string;
   isDirectory: boolean;
   children?: FileNode[];
+  collapsed?: boolean; // true = folder shown but contents not scanned
 }
 
-const IGNORED_DIRS = new Set([
+// Folders that are shown in explorer but NOT recursively scanned (collapsed leaf)
+const COLLAPSED_DIRS = new Set([
   'node_modules',
   '.git',
   '.next',
-  'dist',
-  'build',
-  '.vscode',
-  '.idea',
   '.turbo',
   '.cache',
   '__pycache__',
-  '.DS_Store',
-  'coverage',
   '.vercel',
   '.output',
+  'coverage',
 ]);
 
-const IGNORED_FILES = new Set([
-  'pnpm-lock.yaml',
-  'package-lock.json',
-  'yarn.lock',
+// Folders hidden entirely from explorer
+const HIDDEN_DIRS = new Set([
+  '.idea',
+  '.DS_Store',
+]);
+
+// Files hidden from explorer
+const HIDDEN_FILES = new Set([
   '.DS_Store',
   'Thumbs.db',
 ]);
@@ -57,26 +58,37 @@ async function buildFileTree(
     const nodes: FileNode[] = [];
 
     for (const entry of sortedEntries) {
-      if (IGNORED_DIRS.has(entry.name) && entry.isDirectory()) {
-        continue;
-      }
-      if (IGNORED_FILES.has(entry.name) && !entry.isDirectory()) {
-        continue;
-      }
+      // Hidden entirely
+      if (HIDDEN_DIRS.has(entry.name) && entry.isDirectory()) continue;
+      if (HIDDEN_FILES.has(entry.name) && !entry.isDirectory()) continue;
 
       const fullPath = path.join(dirPath, entry.name);
-      
-      const node: FileNode = {
-        name: entry.name,
-        path: fullPath,
-        isDirectory: entry.isDirectory(),
-      };
 
       if (entry.isDirectory()) {
-        node.children = await buildFileTree(fullPath, currentDepth + 1, maxDepth);
+        if (COLLAPSED_DIRS.has(entry.name)) {
+          // Show the folder itself but don't scan its contents
+          nodes.push({
+            name: entry.name,
+            path: fullPath,
+            isDirectory: true,
+            children: [],
+            collapsed: true,
+          });
+        } else {
+          nodes.push({
+            name: entry.name,
+            path: fullPath,
+            isDirectory: true,
+            children: await buildFileTree(fullPath, currentDepth + 1, maxDepth),
+          });
+        }
+      } else {
+        nodes.push({
+          name: entry.name,
+          path: fullPath,
+          isDirectory: false,
+        });
       }
-
-      nodes.push(node);
     }
 
     return nodes;

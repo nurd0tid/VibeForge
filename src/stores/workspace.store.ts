@@ -36,7 +36,7 @@ export interface ChatSession {
   createdAt: string;
 }
 
-type SidePanel = 'explorer' | 'search' | 'git' | 'tasks' | 'ai';
+type SidePanel = 'explorer' | 'search' | 'git' | 'tasks';
 type BottomTab = 'problems' | 'output' | 'terminal' | 'git-diff' | 'agent-logs';
 
 interface WorkspaceState {
@@ -55,6 +55,7 @@ interface WorkspaceState {
   contextUsedTokens: number;
   contextLimit: number;
   isAutoCompactEnabled: boolean;
+  isAiPanelOpen: boolean;
   pendingDiffs: Record<string, { original: string; modified: string }>;
   expandedFolders: Record<string, boolean>;
 
@@ -69,6 +70,7 @@ interface WorkspaceState {
   markFileTag: (path: string, tag: 'created' | 'edited' | null) => void;
   setActivePanel: (panel: SidePanel) => void;
   setBottomTab: (tab: BottomTab) => void;
+  setAiPanelOpen: (isOpen: boolean) => void;
   addAiMessage: (msg: AiMessage) => void;
   updateLastAiMessage: (content: string) => void;
   updateLastAiMessageSteps: (steps: AgentStep[], content: string) => void;
@@ -114,6 +116,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       contextUsedTokens: 0,
       contextLimit: 128000,
       isAutoCompactEnabled: false,
+      isAiPanelOpen: true,
       pendingDiffs: {},
       expandedFolders: {},
 
@@ -193,6 +196,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
       setActivePanel: (panel) => set({ activePanel: panel }),
       setBottomTab: (tab) => set({ bottomTab: tab }),
+      setAiPanelOpen: (isOpen) => set({ isAiPanelOpen: isOpen }),
 
       addAiMessage: (msg) => {
         set((state) => ({

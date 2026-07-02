@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { memo, useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { useQuery } from '@tanstack/react-query';
 import { useUiStore } from '@/stores/ui.store';
@@ -136,7 +136,11 @@ import {
   Cog,
   Database,
   Shield,
-  Hash
+  Hash,
+  PanelRightClose,
+  PanelRightOpen,
+  Pin,
+  PinOff
 } from 'lucide-react';
 
 interface GitChange {
@@ -721,7 +725,7 @@ function FileTypeIcon({ name, className: extraClass }: { name: string; className
   return <GenericFileIcon className={`${base} text-[#cccccc]`} />;
 }
 
-function FileTreeNode({
+const FileTreeNode = memo(function FileTreeNode({
   node,
   depth,
   onFileClick,
@@ -803,14 +807,13 @@ function FileTreeNode({
       <span className="text-[13px] text-ellipsis overflow-hidden whitespace-nowrap text-left">{node.name}</span>
     </button>
   );
-}
+});
 
 const ACTIVITY_ITEMS = [
   { key: 'explorer' as const, icon: Files, label: 'Explorer' },
   { key: 'search' as const, icon: Search, label: 'Search' },
   { key: 'git' as const, icon: GitBranch, label: 'Source Control' },
   { key: 'tasks' as const, icon: ListTodo, label: 'Tasks' },
-  { key: 'ai' as const, icon: Bot, label: 'AI Assistant' },
 ] as const;
 
 const BOTTOM_TABS = [
@@ -1121,7 +1124,7 @@ function ToolCallStep({ step }: { step: AgentStep }) {
   );
 }
 
-function AiMessageBubble({ role, content, steps, model, provider, isLast }: { role: string; content: string; steps?: AgentStep[]; model?: string; provider?: string; isLast?: boolean }) {
+const AiMessageBubble = memo(function AiMessageBubble({ role, content, steps, model, provider, isLast }: { role: string; content: string; steps?: AgentStep[]; model?: string; provider?: string; isLast?: boolean }) {
   const isUser = role === 'user';
   const isSystem = role === 'system';
 
@@ -1254,7 +1257,7 @@ function AiMessageBubble({ role, content, steps, model, provider, isLast }: { ro
       </div>
     </div>
   );
-}
+});
 
 function ActiveTodoStrip() {
   const { activeTodoList, dismissTodoList } = useWorkspaceStore();
@@ -1436,6 +1439,8 @@ export default function WorkspacePage() {
     setContextUsage,
     setAutoCompactEnabled,
     pendingDiffs,
+    isAiPanelOpen,
+    setAiPanelOpen,
   } = useWorkspaceStore();
 
   const [aiInput, setAiInput] = useState('');
@@ -2349,17 +2354,6 @@ export default function WorkspacePage() {
             </div>
           </div>
         );
-      case 'ai':
-        return (
-          <div className="flex flex-col h-full bg-[#252526]">
-            <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-[#bbbbbb] border-b border-[#1e1e1e]">
-              Quick AI
-            </div>
-            <div className="flex-1 p-3 text-xs text-[#666]">
-              Full AI panel is available on the right side of the editor.
-            </div>
-          </div>
-        );
     }
   };
 
@@ -2735,9 +2729,10 @@ export default function WorkspacePage() {
           </div>
         </div>
 
-        {/* 4. AI AGENT PANEL (Fixed CSS width) */}
-        <div className="w-[380px] shrink-0 flex flex-col bg-[#252526] border-l border-[#1e1e1e] overflow-hidden relative">
-          {/* Provider not connected overlay */}
+        {/* 4. AI AGENT PANEL (Collapsible) */}
+        {isAiPanelOpen ? (
+          <div className="w-[380px] shrink-0 flex flex-col bg-[#252526] border-l border-[#1e1e1e] overflow-hidden relative">
+            {/* Provider not connected overlay */}
           {activeProviders.length === 0 && (
             <div className="absolute inset-0 z-50 bg-[#1e1e1e]/90 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center">
               <Lock className="size-10 text-[#555] mb-4" />
@@ -2833,6 +2828,13 @@ export default function WorkspacePage() {
                       </div>
                     </PopoverContent>
                   </Popover>
+                  <button
+                    onClick={() => setAiPanelOpen(false)}
+                    title="Collapse AI panel"
+                    className="p-1.5 rounded hover:bg-[#333] text-[#666] hover:text-[#cccccc] transition-colors ml-0.5"
+                  >
+                    <PanelRightClose className="size-3.5" />
+                  </button>
                 </div>
               </div>
 
@@ -3207,6 +3209,21 @@ export default function WorkspacePage() {
             </div>
           </div>
         </div>
+        ) : (
+          /* AI Panel collapsed — strip bar on far right */
+          <div className="w-10 shrink-0 flex flex-col items-center py-2 gap-1 bg-[#333333] border-l border-[#252526] z-10">
+            <button
+              onClick={() => setAiPanelOpen(true)}
+              title="Open AI Assistant"
+              className="p-2.5 rounded transition-colors text-[#858585] hover:text-white hover:bg-[#3a3a3a]"
+            >
+              <Bot className="size-5" />
+            </button>
+            {isAgentRunning && (
+              <span className="size-1.5 rounded-full bg-[#4ec9b0] animate-pulse" />
+            )}
+          </div>
+        )}
       </div>
 
       {/* 3. FIXED STATUS BAR */}

@@ -1368,9 +1368,10 @@ export default function WorkspacePage() {
   const [showInterruptedBanner, setShowInterruptedBanner] = useState(false);
   const aiEndRef = useRef<HTMLDivElement>(null);
   const aiScrollContainerRef = useRef<HTMLDivElement>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
   const aiTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const editorInstRef = useRef<any>(null);
+  const diffEditorInstRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
   const decorationsRef = useRef<any>(null);
 
@@ -1380,7 +1381,26 @@ export default function WorkspacePage() {
 
   const activeFile = openFiles.find((f) => f.path === activeFilePath);
 
-  // Detect interrupted task on mount
+  // Auto-scroll Monaco when streaming diff changes
+  useEffect(() => {
+    if (!activeFile) return;
+    const diff = pendingDiffs[activeFile.path];
+    if (diff && isAgentRunning && diffEditorInstRef.current) {
+      // get the modified editor instance from diff editor
+      const modifiedEditor = diffEditorInstRef.current.getModifiedEditor();
+      if (modifiedEditor) {
+        const lineCount = modifiedEditor.getModel()?.getLineCount() || 1;
+        modifiedEditor.revealLine(lineCount, 0); // 0 = Smooth scroll
+      }
+    }
+  }, [pendingDiffs, activeFile, isAgentRunning]);
+
+  // Auto scroll AI chat panel to bottom on update
+  useEffect(() => {
+    if (isAgentRunning && aiScrollContainerRef.current) {
+      aiScrollContainerRef.current.scrollTop = aiScrollContainerRef.current.scrollHeight;
+    }
+  }, [aiMessages, isAgentRunning]);
   useEffect(() => {
     const msgs = useWorkspaceStore.getState().aiMessages;
     if (msgs.length < 2) return;
@@ -1751,6 +1771,7 @@ export default function WorkspacePage() {
                   } else {
                     await handleFileClick(_fp, _fn);
                   }
+                  useWorkspaceStore.getState().markFileTag(_fp, data.name === 'write_file' ? 'created' : 'edited');
                   startLiveDiffAnimation(_fp, data.name, data.args);
                 }
               } else if (eventType === 'tool_result') {
@@ -2056,6 +2077,7 @@ export default function WorkspacePage() {
                   } else {
                     await handleFileClick(_fp, _fn);
                   }
+                  useWorkspaceStore.getState().markFileTag(_fp, data.name === 'write_file' ? 'created' : 'edited');
                   startLiveDiffAnimation(_fp, data.name, data.args);
                 }
               } else if (eventType === 'tool_result') {
@@ -2320,6 +2342,9 @@ export default function WorkspacePage() {
                 >
                   {openFiles.map((file) => {
                     const isTabActive = file.path === activeFilePath;
+                    const hasDiff = !!pendingDiffs[file.path];
+                    const isStreaming = hasDiff && isAgentRunning;
+                    const showTag = file.tag || isStreaming;
                     return (
                       <div
                         key={file.path}
@@ -2334,15 +2359,20 @@ export default function WorkspacePage() {
                           setTabContextMenu({ path: file.path, x: e.clientX, y: e.clientY });
                         }}
                       >
-                        {file.isDeleted && !file.tag && (
+                        {file.isDeleted && !showTag && (
                           <span className="size-1.5 rounded-full bg-[#c74e39] flex-shrink-0" />
                         )}
-                        {file.isDirty && !file.isDeleted && !file.tag && (
+                        {file.isDirty && !file.isDeleted && !showTag && (
                           <Circle className="size-2 fill-current text-[#e8e8e8]" />
                         )}
                         <FileTypeIcon name={file.name} className="!size-3.5" />
-                        <span className={`text-xs py-1.5 ${file.isDeleted && !file.tag ? 'line-through text-[#c74e39] opacity-70' : ''} ${file.tag === 'created' ? 'text-[#73c991]' : file.tag === 'edited' ? 'text-[#4ec9b0]' : ''}`}>
-                          {file.name}{file.tag === 'created' ? ': New File' : file.tag === 'edited' ? ': Editing' : ''}
+                        <span className={`text-xs py-1.5 ${
+                          file.isDeleted && !showTag ? 'line-through text-[#c74e39] opacity-70' : ''
+                        } ${
+                          file.tag === 'created' || isStreaming ? 'text-[#73c991]' : file.tag === 'edited' ? 'text-[#4ec9b0]' : ''
+                        }`}>
+                          {file.name}
+                          {file.tag === 'created' ? ': New File (Editable)' : file.tag === 'edited' ? ': Editing (Editable)' : isStreaming ? ': Streaming...' : ''}
                         </span>
                         <button
                           className="hover:bg-[#333333] rounded p-0.5 transition-colors ml-1"
@@ -2492,6 +2522,9 @@ export default function WorkspacePage() {
                         theme="vs-dark"
                         original={pendingDiffs[activeFile.path].original}
                         modified={pendingDiffs[activeFile.path].modified}
+                        onMount={(editor) => {
+                          diffEditorInstRef.current = editor;
+                        }}
                         options={{
                           readOnly: true,
                           minimap: { enabled: false },

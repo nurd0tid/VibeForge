@@ -120,11 +120,16 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       openFile: (path, name, content) => {
         const existing = get().openFiles.find((f) => f.path === path);
         if (existing) {
-          set({ activeFilePath: path });
+          set((state) => ({
+            openFiles: state.openFiles.map((f) =>
+              f.path === path ? { ...f, isDeleted: false, tag: f.tag } : f
+            ),
+            activeFilePath: path,
+          }));
           return;
         }
         set((state) => ({
-          openFiles: [...state.openFiles, { path, name, content, isDirty: false }],
+          openFiles: [...state.openFiles, { path, name, content, isDirty: false, isDeleted: false }],
           activeFilePath: path,
         }));
       },

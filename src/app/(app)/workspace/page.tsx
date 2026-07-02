@@ -105,7 +105,10 @@ import {
   Lock,
   ChevronsUpDown,
   Settings,
-  MoreVertical
+  MoreVertical,
+  Pencil,
+  RotateCcw,
+  Brain
 } from 'lucide-react';
 
 interface GitChange {
@@ -718,12 +721,11 @@ function InlineDiffViewer({ oldStr, newStr }: { oldStr: string; newStr: string }
 }
 
 function ToolCallStep({ step }: { step: AgentStep }) {
-  const [showOutput, setShowOutput] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [editStatus, setEditStatus] = useState<'applied' | 'rejected' | null>(null);
   const isFinished = !!step.toolOutput;
   const isEditFile = step.toolName === 'edit_file';
   const isWriteFile = step.toolName === 'write_file';
-  const isReadLike = step.toolName === 'read_file' || step.toolName === 'list_directory' || step.toolName === 'memory_read' || step.toolName === 'memory_list';
   const { approvalMode, setPendingDiff, clearPendingDiff } = useWorkspaceStore();
 
   useEffect(() => {
@@ -734,20 +736,19 @@ function ToolCallStep({ step }: { step: AgentStep }) {
       if (path && oldStr) {
         const currentContent = useWorkspaceStore.getState().openFiles.find(f => f.path === path)?.content || '';
         if (currentContent.includes(newStr)) {
-          const original = currentContent.replace(newStr, oldStr);
-          setPendingDiff(path, original, currentContent);
+          setPendingDiff(path, currentContent.replace(newStr, oldStr), currentContent);
         }
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFinished, isEditFile, step.isError]);
 
-  const handleAcceptEdit = () => {
+  const handleAccept = () => {
     setEditStatus('applied');
     if (step.toolArgs?.path) clearPendingDiff(String(step.toolArgs.path));
   };
 
-  const handleRejectEdit = async () => {
+  const handleReject = async () => {
     if (!step.toolArgs?.path || !step.toolArgs?.old_string || !step.toolArgs?.new_string) return;
     try {
       const readRes = await fetch(`/api/workspace/file?path=${encodeURIComponent(String(step.toolArgs.path))}`);
@@ -758,113 +759,161 @@ function ToolCallStep({ step }: { step: AgentStep }) {
       setEditStatus('rejected');
       clearPendingDiff(String(step.toolArgs.path));
       useWorkspaceStore.getState().updateFileContent(String(step.toolArgs.path), reverted);
-      toast.info(`Reverted ${String(step.toolArgs.path)}`);
+      toast.info('Reverted');
     } catch { toast.error('Failed to revert'); }
   };
 
   const filePath = String(step.toolArgs?.path || step.toolArgs?.file || '');
-  const fileName = filePath.split(/[/\\]/).pop() || '';
+  const fileName = filePath.split(/[/\\]/).pop() || filePath;
   const command = String(step.toolArgs?.command || '');
+  const isRunning = !isFinished;
 
-  // ── READ / LIST / MEMORY: simple one-liner with expand ──
-  if (isReadLike) {
-    const label = step.toolName === 'read_file' ? 'read file' : step.toolName === 'list_directory' ? 'visited folder' : step.toolName === 'memory_read' ? 'read memory' : 'indexed memory';
+  // ─── EDIT / WRITE FILE ─────────────────────────────────────────
+  if (isEditFile || isWriteFile) {
+    const ActionIcon = isEditFile ? Pencil : FilePlus;
+    const actionLabel = isEditFile ? 'Edit' : 'Create';
     return (
-      <div className="text-[10px] text-[#888] font-mono">
-        {!isFinished ? (
-          <div className="flex items-center gap-1.5 py-0.5">
-            <Loader2 className="size-2.5 animate-spin text-[#007acc]" />
-            <span className="vibeforge-wave-text">{label}...</span>
-          </div>
-        ) : (
-          <div>
-            <div className="flex items-center gap-1.5 py-0.5">
-              {step.isError ? <XCircle className="size-2.5 text-[#c74e39]" /> : <FileCode className="size-2.5 text-[#519aba]" />}
-              <span className="text-[#666]">{label}</span>
-              <span className="text-[#cccccc] truncate max-w-[200px]">{filePath}</span>
-              {step.toolOutput && (
-                <button onClick={() => setShowOutput(!showOutput)} className="ml-auto text-[#555] hover:text-[#cccccc] transition-colors">
-                  <ChevronRight className={`size-2.5 transition-transform ${showOutput ? 'rotate-90' : ''}`} />
-                </button>
-              )}
-            </div>
-            {showOutput && step.toolOutput && (
-              <div className="ml-4 mt-1 mb-1 text-[9px] text-[#666] bg-[#1a1a1a] rounded p-2 border border-[#333] max-h-32 overflow-y-auto whitespace-pre-wrap">
-                {step.toolOutput}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // ── COMMAND: show command and output ──
-  if (step.toolName === 'run_command' || step.toolName === 'memory_write') {
-    const label = step.toolName === 'run_command' ? 'ran command' : 'updated memory';
-    return (
-      <div className="text-[10px] text-[#888] font-mono">
-        {!isFinished ? (
-          <div className="flex items-center gap-1.5 py-0.5">
-            <Loader2 className="size-2.5 animate-spin text-[#007acc]" />
-            <span className="vibeforge-wave-text">{label}...</span>
-            {command && <span className="text-[#4ec9b0]">$ {command}</span>}
-          </div>
-        ) : (
-          <div>
-            <div className="flex items-center gap-1.5 py-0.5">
-              {step.isError ? <XCircle className="size-2.5 text-[#c74e39]" /> : <Terminal className="size-2.5 text-[#4ec9b0]" />}
-              <span className="text-[#666]">{label}</span>
-              {command && <span className="text-[#cccccc] truncate max-w-[200px]">$ {command}</span>}
-              {filePath && <span className="text-[#cccccc] truncate max-w-[200px]">{filePath}</span>}
-              {step.toolOutput && (
-                <button onClick={() => setShowOutput(!showOutput)} className="ml-auto text-[#555] hover:text-[#cccccc] transition-colors">
-                  <ChevronRight className={`size-2.5 transition-transform ${showOutput ? 'rotate-90' : ''}`} />
-                </button>
-              )}
-            </div>
-            {showOutput && step.toolOutput && (
-              <div className="ml-4 mt-1 mb-1 text-[9px] text-[#666] bg-[#1a1a1a] rounded p-2 border border-[#333] max-h-32 overflow-y-auto whitespace-pre-wrap">
-                {step.toolOutput}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // ── EDIT / WRITE FILE: prominent card with diff + accept/reject ──
-  return (
-    <div className="border border-[#3a3a3a] rounded bg-[#1e1e1e] overflow-hidden">
-      <div className="flex items-center gap-2 px-2.5 py-2 bg-[#252526]">
-        {!isFinished ? (
-          <Loader2 className="size-3 animate-spin text-[#007acc]" />
-        ) : editStatus === 'rejected' ? (
-          <XCircle className="size-3 text-[#e2c08d]" />
-        ) : step.isError ? (
-          <XCircle className="size-3 text-[#c74e39]" />
-        ) : (
-          <CheckCircle2 className="size-3 text-[#4ec9b0]" />
-        )}
-        <span className="text-[10px] text-[#cccccc]">
-          {isEditFile ? 'AI wants to edit:' : 'AI wants to create:'}
-        </span>
-        <span className="text-[10px] text-[#4ec9b0] font-mono truncate flex-1">{fileName}</span>
-        {editStatus && (
-          <span className={`text-[9px] px-1.5 py-0.5 rounded ${editStatus === 'rejected' ? 'bg-[#e2c08d]/20 text-[#e2c08d]' : 'bg-[#4ec9b0]/20 text-[#4ec9b0]'}`}>
-            {editStatus === 'rejected' ? 'Reverted' : 'Applied'}
-          </span>
-        )}
-      </div>
-      <div className="px-2.5 py-1 text-[9px] text-[#555] font-mono border-b border-[#333] truncate">{filePath}</div>
-      {isFinished && !step.isError && !editStatus && (
-        <div className="flex items-center gap-2 px-2.5 py-2 bg-[#252526] border-t border-[#333]">
-          <button onClick={handleAcceptEdit} className="text-[10px] px-2 py-1 rounded bg-[#4ec9b0]/20 text-[#4ec9b0] hover:bg-[#4ec9b0]/30 transition-colors">Accept</button>
-          <button onClick={handleRejectEdit} className="text-[10px] px-2 py-1 rounded bg-[#c74e39]/20 text-[#c74e39] hover:bg-[#c74e39]/30 transition-colors">Reject</button>
-          <span className="text-[9px] text-[#555] ml-auto">{approvalMode === 'auto' ? 'auto-applied' : 'awaiting review'}</span>
+      <div className="text-[9px] font-mono">
+        <div className="flex items-center gap-1.5 py-0.5">
+          {isRunning ? (
+            <Loader2 className="size-2.5 animate-spin text-[#007acc] shrink-0" />
+          ) : editStatus === 'rejected' ? (
+            <RotateCcw className="size-2.5 text-[#e2c08d] shrink-0" />
+          ) : step.isError ? (
+            <XCircle className="size-2.5 text-[#c74e39] shrink-0" />
+          ) : editStatus === 'applied' ? (
+            <CheckCircle2 className="size-2.5 text-[#4ec9b0] shrink-0" />
+          ) : (
+            <ActionIcon className="size-2.5 text-[#888] shrink-0" />
+          )}
+          <span className={isRunning ? 'vibeforge-wave-text' : 'text-[#888]'}>{actionLabel}</span>
+          {editStatus && <span className={editStatus === 'rejected' ? 'text-[#e2c08d]' : 'text-[#4ec9b0]'}>· {editStatus}</span>}
         </div>
-      )}
+
+        <details className="ml-4" onToggle={(e) => setExpanded((e.target as HTMLDetailsElement).open)}>
+          <summary className="cursor-pointer flex items-center gap-1 text-[9px] text-[#666] hover:text-[#aaa] transition-colors py-0.5 list-none">
+            <ChevronRight className={`size-2 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+            <FileCode className="size-2.5 shrink-0 text-[#519aba]" />
+            <span className="text-[#cccccc]">{fileName}</span>
+          </summary>
+          <div className="pl-4 text-[#555] py-0.5 truncate">{filePath}</div>
+        </details>
+
+        {isFinished && !step.isError && !editStatus && approvalMode !== 'auto' && (
+          <div className="flex items-center gap-2 ml-4 mt-0.5">
+            <button onClick={handleAccept} className="text-[9px] px-2 py-0.5 rounded-sm bg-[#4ec9b0]/15 text-[#4ec9b0] hover:bg-[#4ec9b0]/25 transition-colors border border-[#4ec9b0]/30 flex items-center gap-1">
+              <CheckCircle2 className="size-2.5" />Approve
+            </button>
+            <button onClick={handleReject} className="text-[9px] px-2 py-0.5 rounded-sm bg-[#c74e39]/15 text-[#c74e39] hover:bg-[#c74e39]/25 transition-colors border border-[#c74e39]/30 flex items-center gap-1">
+              <XCircle className="size-2.5" />Reject
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ─── READ FILE ─────────────────────────────────────────────────
+  if (step.toolName === 'read_file') {
+    return (
+      <div className="text-[9px] font-mono">
+        <div className="flex items-center gap-1.5 py-0.5">
+          {isRunning ? <Loader2 className="size-2.5 animate-spin text-[#007acc] shrink-0" /> : <FileText className="size-2.5 text-[#888] shrink-0" />}
+          <span className={isRunning ? 'vibeforge-wave-text' : 'text-[#666]'}>{isRunning ? 'reading' : 'read'}</span>
+          <FileCode className="size-2.5 text-[#519aba] shrink-0" />
+          <span className="text-[#cccccc] truncate max-w-[200px]">{filePath}</span>
+          {isFinished && step.toolOutput && (
+            <button onClick={() => setExpanded(!expanded)} className="ml-auto text-[#555] hover:text-[#888]">
+              <ChevronRight className={`size-2.5 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+            </button>
+          )}
+        </div>
+        {expanded && step.toolOutput && (
+          <div className="ml-4 text-[9px] text-[#555] bg-[#1a1a1a] border border-[#333] rounded p-1.5 mt-0.5 max-h-24 overflow-y-auto whitespace-pre-wrap">
+            {step.toolOutput.slice(0, 400)}{step.toolOutput.length > 400 ? '…' : ''}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ─── LIST DIRECTORY ────────────────────────────────────────────
+  if (step.toolName === 'list_directory') {
+    const lines = step.toolOutput ? step.toolOutput.trim().split('\n') : [];
+    const preview = lines.slice(0, 5);
+    return (
+      <div className="text-[9px] font-mono">
+        <div className="flex items-center gap-1.5 py-0.5">
+          {isRunning ? <Loader2 className="size-2.5 animate-spin text-[#007acc] shrink-0" /> : <FolderSearch className="size-2.5 text-[#888] shrink-0" />}
+          <span className={isRunning ? 'vibeforge-wave-text' : 'text-[#666]'}>{isRunning ? 'visiting' : 'visited'}</span>
+          <FolderOpen className="size-2.5 text-[#dcb67a] shrink-0" />
+          <span className="text-[#cccccc] truncate max-w-[200px]">{filePath}</span>
+          {isFinished && preview.length > 0 && (
+            <button onClick={() => setExpanded(!expanded)} className="ml-auto text-[#555] hover:text-[#888]">
+              <ChevronRight className={`size-2.5 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+            </button>
+          )}
+        </div>
+        {expanded && (
+          <div className="ml-4 flex flex-col gap-0.5 py-0.5">
+            {preview.map((line, i) => {
+              const clean = line.replace(/^[📄📁\s]*/, '').trim();
+              const isDir = line.includes('📁') || line.trim().startsWith('d');
+              return (
+                <div key={i} className="flex items-center gap-1 text-[#666]">
+                  {isDir ? <Folder className="size-2 text-[#dcb67a] shrink-0" /> : <FileCode className="size-2 text-[#519aba] shrink-0" />}
+                  <span>{clean}</span>
+                </div>
+              );
+            })}
+            {lines.length > 5 && <span className="text-[#555]">+{lines.length - 5} more…</span>}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ─── RUN COMMAND ──────────────────────────────────────────────
+  if (step.toolName === 'run_command') {
+    return (
+      <div className="text-[9px] font-mono">
+        <div className="flex items-center gap-1.5 py-0.5">
+          {isRunning ? <Loader2 className="size-2.5 animate-spin text-[#007acc] shrink-0" /> : step.isError ? <XCircle className="size-2.5 text-[#c74e39] shrink-0" /> : <Terminal className="size-2.5 text-[#4ec9b0] shrink-0" />}
+          <span className={isRunning ? 'vibeforge-wave-text' : 'text-[#666]'}>{isRunning ? 'running' : 'ran'}</span>
+          <span className="text-[#4ec9b0] truncate max-w-[200px]">$ {command}</span>
+          {isFinished && step.toolOutput && (
+            <button onClick={() => setExpanded(!expanded)} className="ml-auto text-[#555] hover:text-[#888]">
+              <ChevronRight className={`size-2.5 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+            </button>
+          )}
+        </div>
+        {expanded && step.toolOutput && (
+          <div className="ml-4 text-[9px] text-[#555] bg-[#0e0e0e] border border-[#333] rounded p-1.5 mt-0.5 max-h-32 overflow-y-auto whitespace-pre-wrap">
+            {step.toolOutput}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ─── MEMORY ───────────────────────────────────────────────────
+  if (['memory_read', 'memory_list', 'memory_write'].includes(step.toolName || '')) {
+    const label = step.toolName === 'memory_write' ? 'updated memory' : step.toolName === 'memory_read' ? 'read memory' : 'indexed memory';
+    return (
+      <div className="text-[9px] font-mono flex items-center gap-1.5 py-0.5">
+        {isRunning ? <Loader2 className="size-2.5 animate-spin text-[#007acc] shrink-0" /> : <Brain className="size-2.5 text-[#888] shrink-0" />}
+        <span className={isRunning ? 'vibeforge-wave-text' : 'text-[#666]'}>{label}</span>
+        {filePath && <span className="text-[#cccccc] truncate max-w-[180px]">{filePath}</span>}
+      </div>
+    );
+  }
+
+  // ─── FALLBACK ─────────────────────────────────────────────────
+  return (
+    <div className="text-[9px] font-mono flex items-center gap-1.5 py-0.5">
+      {isRunning ? <Loader2 className="size-2.5 animate-spin text-[#007acc] shrink-0" /> : <Cpu className="size-2.5 text-[#888] shrink-0" />}
+      <span className={isRunning ? 'vibeforge-wave-text' : 'text-[#666]'}>{step.toolName}</span>
+      {filePath && <span className="text-[#cccccc] truncate max-w-[180px]">{filePath}</span>}
     </div>
   );
 }

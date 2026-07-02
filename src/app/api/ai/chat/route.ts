@@ -17,7 +17,7 @@ async function executeTool(name: string, args: Record<string, string>, projectRo
       try {
         const target = resolve(args.path || '.');
         const entries = await fs.readdir(target, { withFileTypes: true });
-        return entries.map((e) => `${e.isDirectory() ? '📁' : '📄'} ${e.name}`).join('\n') || '(empty)';
+        return entries.map((e) => `${e.isDirectory() ? '[DIR]' : '[FILE]'} ${e.name}`).join('\n') || '(empty)';
       } catch (e: unknown) { return `Error: ${e instanceof Error ? e.message : String(e)}`; }
     }
     case 'read_file': {

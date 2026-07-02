@@ -857,8 +857,8 @@ function ToolCallStep({ step }: { step: AgentStep }) {
         {expanded && (
           <div className="ml-4 flex flex-col gap-0.5 py-0.5">
             {preview.map((line, i) => {
-              const clean = line.replace(/^[📄📁\s]*/, '').trim();
-              const isDir = line.includes('📁') || line.trim().startsWith('d');
+              const isDir = line.includes('[DIR]');
+              const clean = line.replace(/^\[(DIR|FILE)\]\s*/, '').trim();
               return (
                 <div key={i} className="flex items-center gap-1 text-[#666]">
                   {isDir ? <Folder className="size-2 text-[#dcb67a] shrink-0" /> : <FileCode className="size-2 text-[#519aba] shrink-0" />}
@@ -963,18 +963,27 @@ function AiMessageBubble({ role, content, steps, model, provider }: { role: stri
         </div>
 
         {steps && steps.length > 0 && (
-          <div className="flex flex-col mx-3 mt-2 gap-0.5">
+          <div className="flex flex-col mx-3 mt-2 gap-0">
             {steps.map((step, idx) => {
               if (step.type === 'thought') {
                 const isActive = !step.toolOutput && idx === steps.length - 1;
                 return (
-                  <div key={idx} className="text-[10px] text-[#888] py-0.5">
+                  <div key={idx} className="text-[9px] py-0.5">
                     <span className={isActive ? 'vibeforge-wave-text' : 'text-[#555] italic'}>{step.text ? step.text.slice(0, 80) + (step.text.length > 80 ? '...' : '') : (isActive ? 'Thinking...' : '')}</span>
                   </div>
                 );
               }
               if (step.type === 'tool_call') {
-                return <ToolCallStep key={idx} step={step} />;
+                return (
+                  <div key={idx}>
+                    <div className="flex items-center gap-1.5 my-1">
+                      <div className="flex-1 h-px bg-[#333]" />
+                      <span className="text-[8px] text-[#555] uppercase tracking-widest shrink-0">{step.toolName === 'read_file' ? 'read' : step.toolName === 'list_directory' ? 'visit' : step.toolName === 'edit_file' ? 'edit' : step.toolName === 'write_file' ? 'create' : step.toolName === 'run_command' ? 'command' : step.toolName?.replace('memory_', '') || 'tool'}</span>
+                      <div className="flex-1 h-px bg-[#333]" />
+                    </div>
+                    <ToolCallStep step={step} />
+                  </div>
+                );
               }
               return null;
             })}

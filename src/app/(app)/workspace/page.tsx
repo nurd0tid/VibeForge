@@ -830,6 +830,18 @@ const AI_SKILLS = [
   { id: 'review-code', label: '@review-code', description: 'Review code changes' },
   { id: 'daily-log', label: '@daily-log', description: 'Write a daily log' },
   { id: 'update-context', label: '@update-context', description: 'Update project context' },
+  { id: 'context-engineering', label: '@context-engineering', description: 'Analyze and optimize project context' },
+  { id: 'frontend-ui-engineering', label: '@frontend-ui-engineering', description: 'Build UI components and pages' },
+  { id: 'structured-file-editing', label: '@structured-file-editing', description: 'Edit files with search & replace' },
+  { id: 'diff-viewer', label: '@diff-viewer', description: 'Review code diffs and changes' },
+  { id: 'task-play-workflow', label: '@task-play-workflow', description: 'Execute task play workflow' },
+  { id: 'nocodb-persistence', label: '@nocodb-persistence', description: 'Manage NocoDB data persistence' },
+  { id: 'update-memory-bank', label: '@update-memory-bank', description: 'Update project memory bank (UMB)' },
+  { id: 'mcp-tooling', label: '@mcp-tooling', description: 'Use MCP server tools' },
+  { id: 'debugging', label: '@debugging', description: 'Debug and fix errors' },
+  { id: 'regression-guard', label: '@regression-guard', description: 'Check for regressions before shipping' },
+  { id: 'documentation-update', label: '@documentation-update', description: 'Update project documentation' },
+  { id: 'definition-of-done', label: '@definition-of-done', description: 'Verify task meets done criteria' },
 ];
 
 function flattenTree(nodes: FileNode[]): FileNode[] {

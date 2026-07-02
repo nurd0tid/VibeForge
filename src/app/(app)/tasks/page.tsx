@@ -661,7 +661,9 @@ Generate the tasks now:`
                     }}
                   >
                     <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder="Select Provider" />
+                      <SelectValue placeholder="Select Provider">
+                        {activeAiProviderName}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {allProviders.map((p: any) => (

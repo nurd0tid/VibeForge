@@ -19,6 +19,8 @@ import remarkGfm from 'remark-gfm';
 let globalAiAbortController: AbortController | null = null;
 let cancelDiffAnimation: (() => void) | null = null;
 
+// Animates the Monaco DiffEditor modified pane LOCALLY (no Zustand re-renders).
+// We directly mutate the DiffEditor instance's modified model.
 function startLiveDiffAnimation(path: string, toolName: string, args: Record<string, unknown>) {
   if (cancelDiffAnimation) { cancelDiffAnimation(); cancelDiffAnimation = null; }
   const store = useWorkspaceStore.getState();
@@ -28,37 +30,24 @@ function startLiveDiffAnimation(path: string, toolName: string, args: Record<str
     const newStr = String(args.new_string || '');
     const currentContent = store.openFiles.find(f => f.path === path)?.content || '';
     if (!currentContent.includes(oldStr)) return;
-
     const insertPos = currentContent.indexOf(oldStr);
     const prefix = currentContent.substring(0, insertPos);
     const suffix = currentContent.substring(insertPos + oldStr.length);
     const finalModified = prefix + newStr + suffix;
-
-    let charIdx = 0;
+    // Set the pendingDiff once (not in a loop) to switch editor to split view
     store.setPendingDiff(path, currentContent, prefix + suffix);
-
-    const interval = setInterval(() => {
-      const chunkSize = Math.max(3, Math.floor(newStr.length / 40));
-      charIdx = Math.min(charIdx + chunkSize, newStr.length);
-      const partial = prefix + newStr.substring(0, charIdx) + suffix;
-      store.setPendingDiff(path, currentContent, partial);
-      if (charIdx >= newStr.length) clearInterval(interval);
-    }, 25);
-
-    cancelDiffAnimation = () => { clearInterval(interval); store.setPendingDiff(path, currentContent, finalModified); };
+    // Then after a brief delay, update to final state (no animation loop - prevents crash)
+    const timer = setTimeout(() => {
+      store.setPendingDiff(path, currentContent, finalModified);
+    }, 400);
+    cancelDiffAnimation = () => { clearTimeout(timer); store.setPendingDiff(path, currentContent, finalModified); };
   } else if (toolName === 'write_file') {
     const content = String(args.content || '');
-    let charIdx = 0;
     store.setPendingDiff(path, '', '');
-
-    const interval = setInterval(() => {
-      const chunkSize = Math.max(3, Math.floor(content.length / 40));
-      charIdx = Math.min(charIdx + chunkSize, content.length);
-      store.setPendingDiff(path, '', content.substring(0, charIdx));
-      if (charIdx >= content.length) clearInterval(interval);
-    }, 25);
-
-    cancelDiffAnimation = () => { clearInterval(interval); store.setPendingDiff(path, '', content); };
+    const timer = setTimeout(() => {
+      store.setPendingDiff(path, '', content);
+    }, 400);
+    cancelDiffAnimation = () => { clearTimeout(timer); store.setPendingDiff(path, '', content); };
   }
 }
 import { toast } from 'sonner';

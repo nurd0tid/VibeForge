@@ -9,6 +9,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useQuery } from '@tanstack/react-query';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,11 +36,14 @@ import {
   Filter,
   ChevronDown,
   X,
-  Bot
+  Bot,
+  Play
 } from 'lucide-react';
 import type { Task, TaskStatus } from '@/types';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { toast } from 'sonner';
+import { useRouter } from 'next/navigation';
+import { useWorkspaceStore } from '@/stores/workspace.store';
 
 const COLUMNS: { id: TaskStatus; label: string }[] = [
   { id: 'backlog', label: 'Backlog' },
@@ -91,20 +97,70 @@ const STATUS_OPTIONS: { value: TaskStatus; label: string }[] = [
   { value: 'blocked', label: 'Blocked' },
 ];
 
-function TaskCard({ task, onOpen }: { task: Task; onOpen: (id: string) => void }) {
+function TaskCard({ task, onOpen, selected, onToggleSelect }: { task: Task; onOpen: (id: string) => void; selected: boolean; onToggleSelect: (id: number) => void }) {
+  const router = useRouter();
   const type = task.type ? TYPE_CONFIG[task.type] : null;
   const priority = task.priority ? PRIORITY_CONFIG[task.priority] : null;
   const TypeIcon = type?.icon;
   const PriorityIcon = priority?.icon;
 
+  const handlePlayTask = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    // Create a working plan based on this task
+    const mockTodoList: any = {
+      id: crypto.randomUUID(),
+      taskId: String(task.Id),
+      sessionId: 'chat_session',
+      source: 'play_task',
+      status: 'active',
+      dismissedByUser: false,
+      collapsed: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      items: [
+        { id: '1', taskId: String(task.Id), sessionId: 'chat_session', title: `Analyze task: ${task.title}`, status: 'done', order: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+        { id: '2', taskId: String(task.Id), sessionId: 'chat_session', title: `Locate related files: ${task.related_files || 'Not specified'}`, status: 'running', order: 2, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+        { id: '3', taskId: String(task.Id), sessionId: 'chat_session', title: `Implement task requirement`, status: 'pending', order: 3, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+        { id: '4', taskId: String(task.Id), sessionId: 'chat_session', title: `Verify implementation & run build`, status: 'pending', order: 4, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+      ]
+    };
+
+    useWorkspaceStore.getState().setActiveTodoList(mockTodoList);
+    useWorkspaceStore.getState().setActivePanel('tasks');
+    
+    toast.success(`Task "${task.title}" queued in Workspace!`);
+    router.push('/workspace');
+  };
+
   return (
-    <button
+    <div
       onClick={() => onOpen(String(task.Id))}
-      className="w-full text-left rounded-lg border border-border bg-card px-3 py-3 hover:border-primary/40 hover:shadow-sm transition-all group"
+      className={`w-full text-left rounded-lg border bg-card px-3 py-3 hover:border-primary/40 hover:shadow-sm transition-all group cursor-pointer relative ${
+        selected ? 'border-primary shadow-sm bg-primary/5' : 'border-border'
+      }`}
     >
-      <p className="text-sm font-medium text-foreground line-clamp-2 mb-2 group-hover:text-primary transition-colors">
-        {task.title}
-      </p>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-start gap-2 pr-6">
+          <input
+            type="checkbox"
+            checked={selected}
+            onClick={(e) => e.stopPropagation()}
+            onChange={() => onToggleSelect(task.Id)}
+            className="mt-1 rounded border-border text-primary focus:ring-primary size-3.5 shrink-0"
+          />
+          <p className="text-sm font-medium text-foreground line-clamp-2 mb-2 group-hover:text-primary transition-colors">
+            {task.title}
+          </p>
+        </div>
+        <button
+          onClick={handlePlayTask}
+          className="absolute top-2.5 right-2.5 p-1 rounded-md bg-[#007acc] text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-[#006bb3]"
+          title="Play Task in Workspace"
+        >
+          <Play className="size-3" />
+        </button>
+      </div>
 
       <div className="flex flex-wrap items-center gap-1.5">
         {type && TypeIcon && (
@@ -136,7 +192,7 @@ function TaskCard({ task, onOpen }: { task: Task; onOpen: (id: string) => void }
           )}
         </div>
       )}
-    </button>
+    </div>
   );
 }
 
@@ -169,43 +225,168 @@ export default function TasksPage() {
   const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiGenerating, setAiGenerating] = useState(false);
+
+  const [selectedAiProviderId, setSelectedAiProviderId] = useState('');
+  const [selectedAiModelId, setSelectedAiModelId] = useState('');
+
+  const { data: providersData } = useQuery({
+    queryKey: ['providers'],
+    queryFn: async () => {
+      const res = await fetch('/api/providers?limit=100');
+      if (!res.ok) throw new Error('Failed to fetch providers');
+      return res.json();
+    },
+  });
+  const allProviders = providersData?.list || [];
+
+  const activeAiProvider = allProviders.find((p: any) => p.Id?.toString() === selectedAiProviderId) || allProviders[0];
+  const activeAiProviderRec = activeAiProvider as Record<string, unknown> | undefined;
+  const activeAiProviderName = activeAiProviderRec
+    ? ((activeAiProviderRec.name || activeAiProviderRec['Name'] || 'Provider') as string)
+    : 'Provider';
+  const activeAiDefaultModel = activeAiProviderRec
+    ? ((activeAiProviderRec.default_model || activeAiProviderRec['Default Model'] || '') as string)
+    : '';
+  const effectiveAiModel = selectedAiModelId || activeAiDefaultModel;
   const [aiTasks, setAiTasks] = useState<{ title: string; description: string; type: string; priority: string; estimate_days: number }[]>([]);
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<number>>(new Set());
+  const [viewMode, setViewMode] = useState<'all' | 'pending' | 'done'>('all');
+  const router = useRouter();
+
+  const DONE_STATUSES: TaskStatus[] = ['done'];
+  const PENDING_STATUSES: TaskStatus[] = ['backlog', 'todo', 'in_progress', 'review', 'testing', 'blocked'];
 
   const filtered = useMemo(() => {
     const allTasks: Task[] = data?.list ?? [];
     return allTasks.filter((task) => {
+      if (viewMode === 'pending' && !PENDING_STATUSES.includes(task.status)) return false;
+      if (viewMode === 'done' && !DONE_STATUSES.includes(task.status)) return false;
       if (search && !task.title.toLowerCase().includes(search.toLowerCase())) return false;
       if (priorityFilter.length > 0 && (!task.priority || !priorityFilter.includes(task.priority))) return false;
       if (statusFilter.length > 0 && !statusFilter.includes(task.status)) return false;
       return true;
     });
-  }, [data?.list, search, priorityFilter, statusFilter]);
+  }, [data?.list, search, priorityFilter, statusFilter, viewMode]);
+
+  const handlePlaySelected = () => {
+    if (selectedTaskIds.size === 0) return;
+    const allTasks: Task[] = data?.list ?? [];
+    const selectedTasks = allTasks.filter(t => selectedTaskIds.has(t.Id));
+    
+    const now = new Date().toISOString();
+    const todoItems: any[] = [];
+    selectedTasks.forEach((task, i) => {
+      todoItems.push(
+        { id: `1-${task.Id}`, taskId: String(task.Id), sessionId: 'multi_session', title: `Analyze: ${task.title}`, status: i === 0 ? 'running' : 'pending', order: i * 4 + 1, createdAt: now, updatedAt: now },
+        { id: `2-${task.Id}`, taskId: String(task.Id), sessionId: 'multi_session', title: `Implement: ${task.title}`, status: 'pending', order: i * 4 + 2, createdAt: now, updatedAt: now },
+        { id: `3-${task.Id}`, taskId: String(task.Id), sessionId: 'multi_session', title: `Verify: ${task.title}`, status: 'pending', order: i * 4 + 3, createdAt: now, updatedAt: now }
+      );
+    });
+
+    const todoList: any = {
+      id: crypto.randomUUID(),
+      sessionId: 'multi_session',
+      source: 'multi_task',
+      status: 'active',
+      dismissedByUser: false,
+      collapsed: false,
+      createdAt: now,
+      updatedAt: now,
+      items: todoItems,
+    };
+
+    useWorkspaceStore.getState().setActiveTodoList(todoList);
+    toast.success(`${selectedTaskIds.size} task${selectedTaskIds.size > 1 ? 's' : ''} queued in Workspace`);
+    setSelectedTaskIds(new Set());
+    router.push('/workspace');
+  };
 
   const hasFilters = search || priorityFilter.length > 0 || statusFilter.length > 0;
 
-  const handleGenerateAiTasks = () => {
+  const handleGenerateAiTasks = async () => {
     if (!aiPrompt.trim()) return;
+    if (!activeAiProvider) {
+      toast.error('Please connect a provider in the Providers page first.');
+      return;
+    }
     setAiGenerating(true);
-    setTimeout(() => {
-      setAiTasks([
-        {
-          title: 'Implement database schema',
-          description: 'Set up the initial NocoDB tables based on requirements.',
-          type: 'feature',
-          priority: 'high',
-          estimate_days: 1,
-        },
-        {
-          title: 'Create API endpoints',
-          description: 'Build Next.js API routes for the core entities.',
-          type: 'feature',
-          priority: 'medium',
-          estimate_days: 2,
-        },
-      ]);
+    setAiTasks([]);
+    try {
+      const providerId = activeAiProvider.Id;
+      const model = effectiveAiModel;
+      const res = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [
+            {
+              role: 'user',
+              content: `You are a task planning assistant. Based on the following project description, generate a structured list of 3-6 development tasks.
+
+Project description: ${aiPrompt}
+
+Respond ONLY with a JSON array of tasks. Each task must have:
+- title (string, concise)
+- description (string, 1-2 sentences)
+- type (one of: feature, bug, chore, refactor, docs)
+- priority (one of: low, medium, high, critical)
+- estimate_days (number, 1-5)
+
+Example format:
+[{"title":"...", "description":"...", "type":"feature", "priority":"high", "estimate_days":2}]
+
+Generate the tasks now:`
+            }
+          ],
+          providerId: providerId.toString(),
+          model,
+          skill: 'create-task',
+        }),
+      });
+
+      if (!res.ok || !res.body) throw new Error('Failed to call AI provider');
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let fullContent = '';
+      let buffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() || '';
+        for (const part of parts) {
+          const lines = part.split('\n').map(l => l.trim()).filter(Boolean);
+          const eventLine = lines.find(l => l.startsWith('event:'));
+          const dataLine = lines.find(l => l.startsWith('data:'));
+          if (!eventLine || !dataLine) continue;
+          const eventType = eventLine.replace(/^event:\s*/, '').trim();
+          const dataStr = dataLine.replace(/^data:\s*/, '').trim();
+          if (eventType === 'content') {
+            try { fullContent += JSON.parse(dataStr).delta || ''; } catch {}
+          }
+        }
+      }
+
+      const jsonMatch = fullContent.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (Array.isArray(parsed)) {
+          setAiTasks(parsed);
+          toast.success(`Generated ${parsed.length} tasks using ${activeAiProviderName} · ${model}`);
+        } else {
+          throw new Error('Response is not an array');
+        }
+      } else {
+        throw new Error('No valid JSON array found in AI response');
+      }
+    } catch (err: any) {
+      toast.error('AI task generation failed: ' + err.message);
+    } finally {
       setAiGenerating(false);
-      toast.success('AI suggested tasks based on your description.');
-    }, 1500);
+    }
   };
 
   const handleCreateAiTask = (taskDef: any) => {
@@ -267,6 +448,23 @@ export default function TasksPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {selectedTaskIds.size > 0 && (
+              <Button size="sm" onClick={handlePlaySelected} className="gap-1.5 bg-[#007acc] hover:bg-[#006bb3]">
+                <Play className="size-3.5" />
+                Play {selectedTaskIds.size} Task{selectedTaskIds.size > 1 ? 's' : ''}
+              </Button>
+            )}
+            <div className="flex items-center border border-border rounded-md overflow-hidden h-8">
+              {(['all', 'pending', 'done'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => setViewMode(mode)}
+                  className={`px-3 py-1 text-xs font-medium transition-colors ${viewMode === mode ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                >
+                  {mode === 'all' ? 'All' : mode === 'pending' ? 'Pending' : 'Done'}
+                </button>
+              ))}
+            </div>
             <Button variant="outline" onClick={() => setAiDrawerOpen(true)}>
               <Bot className="mr-2" />
               AI Create Task
@@ -414,6 +612,15 @@ export default function TasksPage() {
                             key={task.Id}
                             task={task}
                             onOpen={openTaskDrawer}
+                            selected={selectedTaskIds.has(task.Id)}
+                            onToggleSelect={(id) => {
+                              setSelectedTaskIds((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(id)) next.delete(id);
+                                else next.add(id);
+                                return next;
+                              });
+                            }}
                           />
                         ))
                       )}
@@ -442,6 +649,38 @@ export default function TasksPage() {
           
           <div className="flex-1 overflow-y-auto pr-2 space-y-6">
             <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3 mb-2">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Provider</Label>
+                  <Select
+                    value={activeAiProvider?.Id?.toString() || ''}
+                    onValueChange={(val) => {
+                      setSelectedAiProviderId(val);
+                      setSelectedAiModelId('');
+                    }}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Select Provider" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {allProviders.map((p: any) => (
+                        <SelectItem key={p.Id} value={p.Id.toString()} className="text-xs">
+                          {p.name || p['Name']}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Model</Label>
+                  <Input 
+                    placeholder="e.g. gpt-4o" 
+                    value={selectedAiModelId || activeAiDefaultModel}
+                    onChange={(e) => setSelectedAiModelId(e.target.value)}
+                    className="h-8 text-xs" 
+                  />
+                </div>
+              </div>
               <div className="bg-blue-500/10 border border-blue-500/20 rounded-md p-3 text-xs text-blue-700 dark:text-blue-400">
                 <strong>Pro tip:</strong> Uses the Create Task skill to break down objectives into structured tasks. See <code>docs/skills/create-task.md</code>.
               </div>

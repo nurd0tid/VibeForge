@@ -1,38 +1,48 @@
 # Skill: Create Task
 
 ## Purpose
+Convert structured plans into actionable, atomic Kanban tasks suitable for tracking progress and execution.
 
-Create small Kanban tasks from planning or user requests and store them in NocoDB tasks.
+## When to Use
+- After a plan is approved
+- When breaking down a large epic into manageable tickets
+- User requests to create tasks from a list
 
-## Required Behavior
+## Pre-Conditions (Read Before Acting)
+- [ ] Read AGENTS.md
+- [ ] Read memory bank (`activeContext.md`, `progress.md`)
+- [ ] Check relevant docs (`docs/agent/HOW_VIBEFORGE_WORKS.md`)
+- [ ] Read the current plan output from `NEXT_ACTION.md`
+- [ ] Verify NocoDB schema and connection
 
-1. Run `list_directory docs` or check for schema documentation.
-2. If schema documentation is unavailable, ensure you structure the tasks cleanly for the Kanban board.
-3. Read `docs/ai/project-context.md` for current context.
-4. Use Context7 when package docs are involved.
-5. Use Sequential Thinking for complex reasoning.
-6. Follow AGENTS.md rules.
-7. Break down large requests into small, manageable Kanban tasks.
-8. Save output to NocoDB using appropriate API routes or helpers.
-9. Do not mark task done if blockers remain.
+## Steps
+1. Parse the plan from `NEXT_ACTION.md`
+2. Break down broad phases into specific, atomic tasks
+3. For each task, define: Title, Description, Type (Feature/Bug/Chore), Priority, Status (Todo)
+4. Use `src/lib/nocodb-fields.ts` helpers to ensure correct NocoDB field mapping
+5. Save tasks to NocoDB via the API
+6. Update `ActiveTodoStrip` with the immediate next tasks
 
-## Workflow
+## Anti-Rationalization Rules
+| Excuse | Rebuttal |
+|--------|----------|
+| "I'll do X later" | No. Do it now or log it as a blocker. |
+| "One big task is fine" | No, tasks must be small and atomic. Max 4 hours effort. |
+| "I'll just remember the details" | Write the context into the task description. |
+| "NocoDB is down, I'll just write markdown" | Troubleshoot connection first. NocoDB is the source of truth. |
 
-1. Review the input plan or user request.
-2. Break the work down into cohesive tasks (e.g., UI, API, Store).
-3. Ensure each task has a clear title, description, and status.
-4. If generating JSON to send to NocoDB, ensure it uses Title Case keys if required by `AGENTS.md`.
-5. Output the created tasks list.
+## Verification (Definition of Done)
+- [ ] Tasks are saved successfully to NocoDB
+- [ ] Titles map correctly to NocoDB column Titles (not column_names)
+- [ ] Every task has clear acceptance criteria
+- [ ] Memory bank updated with task creation event
 
 ## Output Format
+List of created tasks with their IDs, visible in the chat. `ActiveTodoStrip` updated.
 
-- **Summary:** Brief description of the tasks created.
-- **Tasks Created:**
-  - `[Task Title]`: Brief description of what this task entails.
-- **NocoDB Records:** Confirmation of records created.
-- **Blockers:** Any issues encountered.
-- **Next Steps:** Recommendation on which task to tackle first.
+## Files Affected
+- NocoDB remote records
+- `SESSION.md`
 
-## Done Rule
-
-This skill is complete only when the tasks are defined and (if applicable) saved to NocoDB.
+## Failure Handling
+If NocoDB save fails, check field names (must be Titles). If connection fails, log error and save tasks locally to a `.todo.md` fallback file.

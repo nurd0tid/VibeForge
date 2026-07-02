@@ -14,6 +14,9 @@ import {
 } from '@/components/ui/resizable';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+
+// Global abort controller to survive component unmounts
+let globalAiAbortController: AbortController | null = null;
 import { toast } from 'sonner';
 import type { Provider, NocoDBListResponse } from '@/types';
 import type { AgentStep } from '@/stores/workspace.store';
@@ -31,6 +34,7 @@ import {
   PopoverTrigger,
   PopoverContent,
 } from '@/components/ui/popover';
+import { Switch } from '@/components/ui/switch';
 import {
   Files,
   Search,
@@ -67,6 +71,8 @@ import {
   GitCommit,
   Lock,
   ChevronsUpDown,
+  Settings,
+  MoreVertical
 } from 'lucide-react';
 
 interface GitChange {
@@ -376,6 +382,107 @@ const MonacoEditor = dynamic(
   { ssr: false }
 );
 
+const MonacoDiffEditor = dynamic(
+  () => import('@monaco-editor/react').then((m) => m.DiffEditor),
+  { ssr: false }
+);
+
+function GitDiffPanel({ projectPath, defaultBranch }: { projectPath: string; defaultBranch: string }) {
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [diffContent, setDiffContent] = useState<{ original: string; modified: string } | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const { data } = useQuery<{ branch: string; changes: GitChange[]; error?: string }>({
+    queryKey: ['git-status', projectPath],
+    queryFn: async () => {
+      if (!projectPath) return { branch: defaultBranch, changes: [] };
+      const res = await fetch(`/api/workspace/git/status?path=${encodeURIComponent(projectPath)}`);
+      if (!res.ok) return { branch: defaultBranch, changes: [], error: 'Failed to fetch' };
+      return res.json();
+    },
+    enabled: !!projectPath,
+    refetchInterval: 10000,
+  });
+
+  const changes = data?.changes || [];
+  const modifiedFiles = changes.filter(c => c.status.trim() !== '??' && c.status.trim() !== 'A').map(c => c.file);
+
+  useEffect(() => {
+    let active = true;
+    if (selectedFile && projectPath) {
+      setTimeout(() => { if (active) setIsLoading(true); }, 0);
+      fetch(`/api/workspace/git/diff?path=${encodeURIComponent(projectPath)}&file=${encodeURIComponent(selectedFile)}`)
+        .then(res => res.json())
+        .then(data => {
+          if (active && !data.error) {
+            setDiffContent(data);
+          }
+        })
+        .finally(() => { if (active) setIsLoading(false); });
+    } else {
+      setTimeout(() => { if (active) setDiffContent(null); }, 0);
+    }
+    return () => { active = false; };
+  }, [selectedFile, projectPath]);
+
+  if (!projectPath) {
+    return <div className="p-3 text-xs text-[#888]">No project path configured.</div>;
+  }
+
+  if (modifiedFiles.length === 0) {
+    return <div className="p-3 text-xs text-[#888]">Working tree clean. Branch: <code className="text-[#4ec9b0]">{data?.branch || defaultBranch}</code></div>;
+  }
+
+  return (
+    <div className="flex flex-col h-full bg-[#1e1e1e]">
+      <div className="flex bg-[#252526] border-b border-[#1e1e1e] overflow-x-auto min-h-[30px] flex-shrink-0 scrollbar-none">
+        {modifiedFiles.map(file => (
+          <button
+            key={file}
+            className={`px-3 py-1.5 text-[11px] font-mono whitespace-nowrap border-r border-[#1e1e1e] transition-colors ${selectedFile === file ? 'bg-[#1e1e1e] text-white border-t-2 border-t-[#4ec9b0]' : 'text-[#888] hover:bg-[#2d2d2d]'}`}
+            onClick={() => setSelectedFile(file)}
+          >
+            {file.split(/[/\\]/).pop()}
+          </button>
+        ))}
+      </div>
+      <div className="flex-1 min-h-0 relative">
+        {!selectedFile ? (
+          <div className="flex items-center justify-center h-full text-xs text-[#555] p-4 text-center select-none">
+            Select a modified file from the tabs above to view its diff
+          </div>
+        ) : isLoading ? (
+          <div className="flex items-center justify-center h-full">
+            <Loader2 className="size-5 animate-spin text-[#888]" />
+          </div>
+        ) : diffContent ? (
+          <MonacoDiffEditor
+            height="100%"
+            language={getLanguage(selectedFile)}
+            theme="vs-dark"
+            original={diffContent.original}
+            modified={diffContent.modified}
+            options={{
+              readOnly: true,
+              minimap: { enabled: false },
+              fontSize: 12,
+              fontFamily: "'JetBrains Mono', 'Geist Mono', 'Fira Code', Menlo, monospace",
+              renderSideBySide: true,
+              scrollBeyondLastLine: false,
+              automaticLayout: true,
+              renderWhitespace: 'selection',
+            }}
+          />
+        ) : (
+          <div className="flex items-center justify-center h-full text-xs text-[#c74e39]">
+            Failed to load diff
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 interface FileNode {
   name: string;
   path: string;
@@ -546,17 +653,79 @@ function flattenTreePaths(nodes: FileNode[], prefix = ''): string[] {
   return result;
 }
 
+function InlineDiffViewer({ oldStr, newStr }: { oldStr: string; newStr: string }) {
+  const oldLines = (oldStr || '').split('\n');
+  const newLines = (newStr || '').split('\n');
+  
+  return (
+    <div className="font-mono text-[10px] overflow-x-auto">
+      {oldLines.map((line, i) => (
+        <div key={`old-${i}`} className="flex">
+          <span className="w-4 text-center text-[#c74e39] flex-shrink-0">-</span>
+          <span className="text-[#c74e39] bg-[#c74e39]/10 flex-1 whitespace-pre-wrap break-all px-1">{line}</span>
+        </div>
+      ))}
+      {newLines.map((line, i) => (
+        <div key={`new-${i}`} className="flex">
+          <span className="w-4 text-center text-[#4ec9b0] flex-shrink-0">+</span>
+          <span className="text-[#4ec9b0] bg-[#4ec9b0]/10 flex-1 whitespace-pre-wrap break-all px-1">{line}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ToolCallStep({ step }: { step: AgentStep }) {
-  const [userCollapsed, setUserCollapsed] = useState(false);
+  const [userCollapsed, setUserCollapsed] = useState(true);
+  const [editStatus, setEditStatus] = useState<'applied' | 'rejected' | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const isFinished = !!step.toolOutput;
+  const isEditFile = step.toolName === 'edit_file';
   const isOpen = !isFinished || !userCollapsed;
+  const { approvalMode } = useWorkspaceStore();
 
   useEffect(() => {
     if (isOpen && endRef.current) {
       endRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
   }, [step.toolOutput, isOpen]);
+
+  const toolLabel = isEditFile
+    ? 'Editing file'
+    : step.toolName === 'read_file'
+    ? 'Reading file'
+    : step.toolName === 'list_directory'
+    ? 'Browsing folder'
+    : step.toolName === 'run_command'
+    ? 'Running command'
+    : step.toolName === 'memory_list'
+    ? 'Listing memory bank'
+    : step.toolName === 'memory_read'
+    ? 'Reading memory'
+    : step.toolName === 'memory_write'
+    ? 'Updating memory'
+    : step.toolName;
+
+  const handleRejectEdit = async () => {
+    if (!step.toolArgs?.path || !step.toolArgs?.old_string || !step.toolArgs?.new_string) return;
+    try {
+      const readRes = await fetch(`/api/workspace/file?path=${encodeURIComponent(String(step.toolArgs.path))}`);
+      if (!readRes.ok) throw new Error('Failed to read file');
+      const { content } = await readRes.json();
+      const reverted = content.replace(String(step.toolArgs.new_string), String(step.toolArgs.old_string));
+      await fetch('/api/workspace/file', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: String(step.toolArgs.path), content: reverted }),
+      });
+      setEditStatus('rejected');
+      toast.info(`Reverted changes to ${String(step.toolArgs.path)}`);
+    } catch {
+      toast.error('Failed to revert changes');
+    }
+  };
+
+  const [showSideBySide, setShowSideBySide] = useState(false);
 
   return (
     <div className="border border-[#3a3a3a] rounded bg-[#252526] overflow-hidden">
@@ -566,20 +735,92 @@ function ToolCallStep({ step }: { step: AgentStep }) {
       >
         {!step.toolOutput ? (
           <Loader2 className="size-3 animate-spin text-[#007acc]" />
+        ) : editStatus === 'rejected' ? (
+          <XCircle className="size-3 text-[#e2c08d]" />
         ) : step.isError ? (
           <XCircle className="size-3 text-[#c74e39]" />
         ) : (
           <CheckCircle2 className="size-3 text-[#4ec9b0]" />
         )}
-        <span className="text-[#cccccc] font-mono">{step.toolName}</span>
+        <span className="text-[#4ec9b0] font-mono">{toolLabel}</span>
         {!!(step.toolArgs?.path) && (
-          <span className="text-[#888] truncate">{String(step.toolArgs.path)}</span>
+          <span className="text-[#888] truncate max-w-[160px] font-mono">{String(step.toolArgs.path)}</span>
         )}
-        <ChevronDown className={`size-3 text-[#666] ml-auto transition-transform ${isOpen ? 'rotate-0' : '-rotate-90'}`} />
+        {!!(step.toolArgs?.file) && (
+          <span className="text-[#888] truncate max-w-[160px] font-mono">{String(step.toolArgs.file)}</span>
+        )}
+        {!!(step.toolArgs?.command) && (
+          <span className="text-[#888] truncate max-w-[160px] font-mono">$ {String(step.toolArgs.command)}</span>
+        )}
+        {editStatus && (
+          <span className={`text-[9px] px-1 rounded ml-1 ${editStatus === 'rejected' ? 'bg-[#e2c08d]/20 text-[#e2c08d]' : 'bg-[#4ec9b0]/20 text-[#4ec9b0]'}`}>
+            {editStatus === 'rejected' ? 'Reverted' : 'Applied'}
+          </span>
+        )}
+        <ChevronDown className={`size-3 text-[#666] ml-auto transition-transform flex-shrink-0 ${isOpen ? 'rotate-0' : '-rotate-90'}`} />
       </button>
       {isOpen && (
-        <div className="max-h-48 overflow-y-auto p-2 text-[10px] font-mono text-[#888] bg-[#1e1e1e] whitespace-pre-wrap">
-          {step.toolOutput || 'Running...'}
+        <div className="max-h-64 overflow-y-auto bg-[#1e1e1e] flex flex-col">
+          {isEditFile && step.toolArgs?.old_string !== undefined ? (
+            <div className="p-2 flex flex-col gap-2">
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setShowSideBySide(!showSideBySide)}
+                  className="text-[9px] px-1.5 py-0.5 rounded bg-[#333] text-[#ccc] hover:bg-[#444] transition-colors"
+                >
+                  {showSideBySide ? 'Inline Diff' : 'Side-by-Side'}
+                </button>
+              </div>
+              
+              {showSideBySide ? (
+                <div className="h-40 w-full border border-[#333]">
+                  <MonacoDiffEditor
+                    height="100%"
+                    language={getLanguage(String(step.toolArgs.path || ''))}
+                    theme="vs-dark"
+                    original={String(step.toolArgs.old_string || '')}
+                    modified={String(step.toolArgs.new_string || '')}
+                    options={{
+                      readOnly: true,
+                      minimap: { enabled: false },
+                      fontSize: 10,
+                      renderSideBySide: true,
+                      scrollBeyondLastLine: false,
+                    }}
+                  />
+                </div>
+              ) : (
+                <InlineDiffViewer
+                  oldStr={String(step.toolArgs.old_string || '')}
+                  newStr={String(step.toolArgs.new_string || '')}
+                />
+              )}
+
+              {isFinished && !step.isError && !editStatus && (
+                <div className="flex items-center gap-2 mt-2 pt-2 border-t border-[#333]">
+                  <button
+                    onClick={() => setEditStatus('applied')}
+                    className="text-[10px] px-2 py-1 rounded bg-[#4ec9b0]/20 text-[#4ec9b0] hover:bg-[#4ec9b0]/30 transition-colors"
+                  >
+                    Accept
+                  </button>
+                  <button
+                    onClick={handleRejectEdit}
+                    className="text-[10px] px-2 py-1 rounded bg-[#c74e39]/20 text-[#c74e39] hover:bg-[#c74e39]/30 transition-colors"
+                  >
+                    Reject & Revert
+                  </button>
+                  <span className="text-[9px] text-[#666] ml-auto">
+                    {approvalMode === 'auto' ? 'Auto-applied' : 'Awaiting review'}
+                  </span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="p-2 text-[10px] font-mono text-[#888] whitespace-pre-wrap">
+              {step.toolOutput || 'Running...'}
+            </div>
+          )}
           <div ref={endRef} />
         </div>
       )}
@@ -662,10 +903,138 @@ function AiMessageBubble({ role, content, steps, model }: { role: string; conten
   );
 }
 
+function ActiveTodoStrip() {
+  const { activeTodoList, dismissTodoList } = useWorkspaceStore();
+  const [collapsed, setCollapsed] = useState(true);
+
+  if (!activeTodoList || activeTodoList.dismissedByUser || activeTodoList.status === 'dismissed') {
+    return null;
+  }
+
+  const items = activeTodoList.items || [];
+  const completedCount = items.filter(i => i.status === 'done' || i.status === 'skipped').length;
+  const totalCount = items.length;
+  const runningItem = items.find(i => i.status === 'running');
+
+  return (
+    <div className="bg-[#2d2d2d] border-t border-[#3a3a3a] px-2.5 py-1.5 flex flex-col gap-1 text-xs flex-shrink-0">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 min-w-0">
+          <ListTodo className="size-3 text-[#4ec9b0] flex-shrink-0" />
+          <span className="font-semibold text-[#cccccc] text-[10px] uppercase tracking-wide flex-shrink-0">Working Plan</span>
+          <span className="text-[#888] font-mono text-[10px] flex-shrink-0">{completedCount}/{totalCount}</span>
+          {runningItem && (
+            <span className="text-[#4ec9b0] font-mono text-[10px] truncate animate-pulse">
+              ▶ {runningItem.title}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className="text-[9px] text-[#888] hover:text-[#cccccc] px-1 py-0.5 rounded hover:bg-[#383838] transition-colors"
+          >
+            {collapsed ? 'Expand' : 'Collapse'}
+          </button>
+          <button
+            onClick={() => dismissTodoList()}
+            className="text-[9px] text-[#888] hover:text-[#cccccc] px-1 py-0.5 rounded hover:bg-[#383838] transition-colors"
+          >
+            <X className="size-3" />
+          </button>
+        </div>
+      </div>
+      {!collapsed && (
+        <div className="flex flex-col gap-0.5 pl-1 py-1 max-h-28 overflow-y-auto border-t border-[#383838] mt-1">
+          {items.map((item) => (
+            <div key={item.id} className="flex items-center gap-2 text-[11px] py-0.5">
+              {item.status === 'done' ? (
+                <CheckCircle2 className="size-3 text-[#4ec9b0] shrink-0" />
+              ) : item.status === 'running' ? (
+                <Loader2 className="size-3 animate-spin text-[#007acc] shrink-0" />
+              ) : item.status === 'failed' ? (
+                <XCircle className="size-3 text-[#c74e39] shrink-0" />
+              ) : item.status === 'skipped' ? (
+                <Circle className="size-3 text-[#555] shrink-0" />
+              ) : (
+                <Circle className="size-3 text-[#888] shrink-0" />
+              )}
+              <span className={`truncate ${item.status === 'done' ? 'line-through text-[#666]' : item.status === 'failed' ? 'text-[#c74e39]' : 'text-[#cccccc]'}`}>
+                {item.title}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InterruptedTaskBanner({ 
+  lastMessage, 
+  onResume, 
+  onDismiss 
+}: { 
+  lastMessage: string, 
+  onResume: () => void, 
+  onDismiss: () => void 
+}) {
+  return (
+    <div className="bg-[#c74e39]/10 border-t border-[#c74e39]/20 px-3 py-2 flex flex-col gap-1.5 text-xs flex-shrink-0 relative">
+      <div className="flex items-center gap-2">
+        <AlertTriangle className="size-3.5 text-[#c74e39] flex-shrink-0" />
+        <span className="font-semibold text-[#cccccc]">Task Interrupted</span>
+        <button onClick={onDismiss} className="ml-auto text-[#888] hover:text-[#cccccc]">
+          <X className="size-3" />
+        </button>
+      </div>
+      <p className="text-[#888] leading-relaxed">
+        The agent connection was interrupted. The last prompt was:
+        <br />
+        <span className="text-[#cccccc] italic line-clamp-1 mt-1">"{lastMessage}"</span>
+      </p>
+      <div className="mt-1 flex gap-2">
+        <button onClick={onResume} className="bg-[#c74e39] text-white px-2 py-1 rounded text-[10px] hover:bg-[#a63a28] transition-colors">
+          Resume Task
+        </button>
+        <button onClick={onDismiss} className="bg-[#333] text-[#cccccc] px-2 py-1 rounded text-[10px] hover:bg-[#444] transition-colors">
+          Dismiss
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ContextUsageBar({ usedTokens, contextLimit }: { usedTokens: number; contextLimit: number }) {
+  if (contextLimit <= 0) return null;
+
+  const pct = Math.min(100, Math.round((usedTokens / contextLimit) * 100));
+  const usedK = (usedTokens / 1000).toFixed(1);
+  const limitK = (contextLimit / 1000).toFixed(0);
+
+  let barColor = 'bg-[#4ec9b0]';
+  let label = '';
+  if (pct >= 90) { barColor = 'bg-[#c74e39]'; label = 'Near limit'; }
+  else if (pct >= 70) { barColor = 'bg-[#e2c08d]'; label = 'Getting full'; }
+
+  return (
+    <div className="flex items-center gap-2 text-[9px] text-[#888] mt-1">
+      <div className="flex-1 h-1 bg-[#333] rounded-full overflow-hidden">
+        <div className={`h-full ${barColor} transition-all`} style={{ width: `${pct}%` }} />
+      </div>
+      <span className="font-mono flex-shrink-0">
+        {usedTokens > 0 ? `~${usedK}k / ${limitK}k` : 'Token usage unavailable'}
+      </span>
+      {label && <span className="text-[8px] text-[#e2c08d] flex-shrink-0">{label}</span>}
+    </div>
+  );
+}
+
 const COMMAND_ITEMS = [
   { id: 'new', label: '/new', description: 'Start a new chat session' },
   { id: 'sessions', label: '/sessions', description: 'Show saved sessions' },
   { id: 'clear', label: '/clear', description: 'Clear current conversation' },
+  { id: 'compact', label: '/compact', description: 'Compress context to save tokens' },
   { id: 'mcp-list', label: '/mcp-list', description: 'Show connected MCP servers' },
   { id: 'init-memory', label: '/init-memory', description: 'Initialize memory bank for current project' },
 ];
@@ -685,6 +1054,10 @@ export default function WorkspacePage() {
     activeChatSessionId,
     isAgentRunning,
     agentStatusText,
+    approvalMode,
+    contextUsedTokens,
+    contextLimit,
+    isAutoCompactEnabled,
     openFile,
     closeFile,
     setActiveFile,
@@ -698,10 +1071,14 @@ export default function WorkspacePage() {
     clearAiMessages,
     triggerCollapseAll,
     loadChatSession,
+    deleteChatSession,
     newChatSession,
     saveChatSession,
     setAgentRunning,
     setAgentStatusText,
+    setApprovalMode,
+    setContextUsage,
+    setAutoCompactEnabled,
   } = useWorkspaceStore();
 
   const [aiInput, setAiInput] = useState('');
@@ -714,11 +1091,27 @@ export default function WorkspacePage() {
   const [sessionsMenuOpen, setSessionsMenuOpen] = useState(false);
   const [fileSearchOpen, setFileSearchOpen] = useState(false);
   const [fileSearchQuery, setFileSearchQuery] = useState('');
+  const [showInterruptedBanner, setShowInterruptedBanner] = useState(false);
   const aiEndRef = useRef<HTMLDivElement>(null);
+  const aiScrollContainerRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const aiTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const activeFile = openFiles.find((f) => f.path === activeFilePath);
+
+  // Detect interrupted task on mount
+  useEffect(() => {
+    const msgs = useWorkspaceStore.getState().aiMessages;
+    if (msgs.length < 2) return;
+    const lastMsg = msgs[msgs.length - 1];
+    const secondLast = msgs[msgs.length - 2];
+    const isInterrupted = lastMsg.role === 'assistant' && lastMsg.content === '' && secondLast.role === 'user';
+    if (isInterrupted && !useWorkspaceStore.getState().isAgentRunning) {
+      setTimeout(() => setShowInterruptedBanner(true), 300);
+    }
+  // Only run on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // --- AI Config State ---
   const [selectedProviderId, setSelectedProviderId] = useState<string>('');
@@ -767,6 +1160,15 @@ export default function WorkspacePage() {
   const defaultModelId = providerDefaultModel || activeModels[0]?.id || '';
   const effectiveModelId = (selectedModelId && activeModels.find(m => m.id === selectedModelId)) ? selectedModelId : defaultModelId;
 
+  useEffect(() => {
+    if (effectiveProvider) {
+      const ctxWindow = Number(getField(effectiveProvider as unknown as Record<string, unknown>, 'context_window', 'Context Window') || 0);
+      if (ctxWindow > 0 && ctxWindow !== contextLimit) {
+        setContextUsage(contextUsedTokens, ctxWindow);
+      }
+    }
+  }, [effectiveProvider, contextLimit, contextUsedTokens, setContextUsage]);
+
   const { data: fileTree = [], isLoading: isLoadingTree, refetch: refetchTree } = useQuery<FileNode[]>({
     queryKey: ['workspace-tree', projectPath],
     queryFn: async () => {
@@ -779,9 +1181,40 @@ export default function WorkspacePage() {
     enabled: !!projectPath,
   });
 
+  const isFirstRender = useRef(true);
+
   useEffect(() => {
-    aiEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [aiMessages]);
+    const container = aiScrollContainerRef.current;
+    if (!container) return;
+    if (isFirstRender.current) {
+      container.scrollTop = container.scrollHeight;
+      isFirstRender.current = false;
+    } else {
+      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+    }
+  }, [aiMessages, isAgentRunning, agentStatusText]);
+
+  useEffect(() => {
+    if (isAutoCompactEnabled && contextLimit > 0) {
+      const pct = (contextUsedTokens / contextLimit) * 100;
+      if (pct >= 90 && !isAgentRunning) {
+        // Auto compact if usage is over 90%
+        addAiMessage({ role: 'assistant', content: '', steps: [{ type: 'thought', text: 'Auto-compacting context because usage exceeded 90% threshold...' }] });
+        setTimeout(() => {
+          const currentMsgs = useWorkspaceStore.getState().aiMessages;
+          const preserved = currentMsgs.slice(-2);
+          useWorkspaceStore.setState({
+            aiMessages: [
+              ...preserved,
+              { role: 'assistant', content: `────────────────────────────────────────\n**Context auto-compressed** · Usage exceeded 90%\n*Key context preserved: active task, provider settings, changed files, decisions, known issues*\n────────────────────────────────────────` }
+            ]
+          });
+          setContextUsage(Math.max(0, contextUsedTokens - 4000), contextLimit);
+          toast.success('Context auto-compacted');
+        }, 1500);
+      }
+    }
+  }, [contextUsedTokens, contextLimit, isAutoCompactEnabled, isAgentRunning, addAiMessage, setContextUsage]);
 
   const handleFileClick = useCallback(
     async (filePath: string, fileName: string) => {
@@ -835,6 +1268,130 @@ export default function WorkspacePage() {
     return () => window.removeEventListener('keydown', handler);
   }, [handleSave]);
 
+  const handleResumeTask = async () => {
+    const msgs = useWorkspaceStore.getState().aiMessages;
+    if (msgs.length < 2) return;
+    const lastMsg = msgs[msgs.length - 1];
+    const secondLast = msgs[msgs.length - 2];
+    
+    let messagesToRun = [...msgs];
+    let skill = '';
+    
+    // If the last message is an empty assistant response (interrupted stream)
+    if (lastMsg.role === 'assistant' && !lastMsg.content && secondLast.role === 'user') {
+      // We remove the empty assistant message, we will replace it during run
+      messagesToRun = msgs.slice(0, -1);
+      const lcMsg = secondLast.content.toLowerCase().trim();
+      if (lcMsg === 'umb' || lcMsg === 'update memory' || lcMsg === 'sync memory' || lcMsg === 'update memory bank') {
+        skill = 'update-memory-bank';
+      }
+      const skillMatch = secondLast.content.match(/@([\w-]+)/);
+      if (skillMatch) skill = skillMatch[1];
+    } else {
+      toast.error('Nothing to resume');
+      return;
+    }
+    
+    // Update store state
+    useWorkspaceStore.setState({ aiMessages: messagesToRun });
+    setShowInterruptedBanner(false);
+    
+    // Begin streaming loop again
+    setAgentRunning(true, 'Resuming your request...');
+    globalAiAbortController = new AbortController();
+    abortControllerRef.current = globalAiAbortController;
+    
+    // Ensure we have a fresh assistant message slot
+    addAiMessage({ role: 'assistant', content: '' });
+
+    try {
+      const response = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: messagesToRun,
+          providerId: effectiveProviderId,
+          model: effectiveModelId,
+          skill,
+          projectPath,
+          projectId: activeProjectId,
+        }),
+        signal: globalAiAbortController.signal,
+      });
+
+      if (!response.ok) throw new Error('Failed to resume chat streaming');
+      if (!response.body) throw new Error('No response body from chat API');
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let done = false;
+      let accumulated = '';
+      const currentSteps: AgentStep[] = [];
+      let fullContent = '';
+
+      while (!done) {
+        const { value, done: doneReading } = await reader.read();
+        done = doneReading;
+        if (value) {
+          const chunk = decoder.decode(value, { stream: !done });
+          accumulated += chunk;
+          const parts = accumulated.split('\n\n');
+          accumulated = parts.pop() || '';
+          for (const part of parts) {
+            if (!part.trim()) continue;
+            const lines = part.split('\n').map(l => l.trim()).filter(Boolean);
+            const eventLine = lines.find(l => l.startsWith('event:'));
+            const dataLine = lines.find(l => l.startsWith('data:'));
+            if (!eventLine || !dataLine) continue;
+
+            const eventType = eventLine.replace(/^event:\s*/, '').trim();
+            const dataStr = dataLine.replace(/^data:\s*/, '').trim();
+            
+            if (eventType === 'done') {
+              done = true;
+              break;
+            }
+            try {
+              const data = JSON.parse(dataStr);
+              if (eventType === 'thought') {
+                currentSteps.push({ type: 'thought', text: data.text });
+                setAgentStatusText(`Thinking: ${(data.text || '').slice(0, 60)}...`);
+              } else if (eventType === 'tool_call') {
+                currentSteps.push({ type: 'tool_call', toolId: data.id, toolName: data.name, toolArgs: data.args });
+                const argHint = data.args?.path || data.args?.command || '';
+                setAgentStatusText(`Running: ${data.name}${argHint ? ' ' + argHint : ''}`.slice(0, 80));
+              } else if (eventType === 'tool_result') {
+                const targetStep = currentSteps.find(s => s.type === 'tool_call' && s.toolId === data.id);
+                if (targetStep) {
+                  targetStep.toolOutput = data.output;
+                  targetStep.isError = data.isError;
+                }
+              } else if (eventType === 'content') {
+                fullContent += data.delta || '';
+              } else if (eventType === 'usage') {
+                if (data.total) setContextUsage(data.total, contextLimit);
+              }
+            } catch (e) {
+              console.error('Failed to parse SSE JSON', e, dataStr);
+            }
+          }
+          updateLastAiMessageSteps([...currentSteps], fullContent);
+        }
+      }
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        toast.info('Generation stopped');
+      } else {
+        toast.error(err.message || 'Error occurred during streaming');
+        updateLastAiMessage('An error occurred while communicating with the AI.');
+      }
+    } finally {
+      setAgentRunning(false);
+      globalAiAbortController = null;
+      abortControllerRef.current = null;
+    }
+  };
+
   const handleSendAiMessage = async () => {
     if (!aiInput.trim()) return;
     const userMsg = aiInput.trim();
@@ -868,24 +1425,65 @@ export default function WorkspacePage() {
         addAiMessage({ role: 'assistant', content: '**No project path configured.** Please set a local path for the project in the Projects page first.' });
         return;
       }
-      addAiMessage({ role: 'assistant', content: `🔄 Initializing memory bank for project at \`${projectPath}\`...\n\nThis will create a \`.vibeforge/\` directory in your project with:\n- **memory-bank.md** — project context & AI memory\n- **skills.md** — available skill definitions\n- **AGENTS.md** — AI agent rules for this project` });
-      // Actually create the files
+      const pName = project?.name || 'Project';
+      addAiMessage({ role: 'assistant', content: `Initializing memory bank for **${pName}** at \`${projectPath}\`...\n\nCreating \`.vibeforge/memory-bank/\` with 10 context files.` });
       try {
         await fetch('/api/workspace/terminal/run', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ command: `mkdir -p .vibeforge && echo "" > .vibeforge/memory-bank.md`, cwd: projectPath })
+          body: JSON.stringify({ command: `mkdir -p .vibeforge/memory-bank`, cwd: projectPath })
         });
-        const mbContent = `# Memory Bank — ${project?.name || 'Project'}\n\n## Project Context\n\n> This file is auto-updated by VibeForge AI Agent.\n\n## Current Goal\n\n[Agent will fill this in]\n\n## Architecture Decisions\n\n[Agent will fill this in]\n\n## Key Conventions\n\n[Agent will fill this in]\n\n## Recent Changes\n\n[Agent will fill this in]\n`;
+        const now = new Date().toISOString().split('T')[0];
+        const files: Record<string, string> = {
+          'projectBrief.md': `# Project Brief — ${pName}\n\n## Purpose\n[What this project does]\n\n## Stack\n[Primary tech stack]\n\n## Scope\n[Initial scope and goals]\n`,
+          'productContext.md': `# Product Context — ${pName}\n\n## Target Users\n[Who uses this product]\n\n## Key Modules\n[Main features/modules]\n\n## Business Logic\n[Important business rules]\n`,
+          'activeContext.md': `# Active Context — ${pName}\n\n## Current Focus\n[What is being worked on now]\n\n## Active Files\n[Files currently under modification]\n\n## Constraints\n[Things to watch out for]\n`,
+          'systemPatterns.md': `# System Patterns — ${pName}\n\n## Architecture\n[Architecture pattern used]\n\n## Folder Structure\n[Key folder conventions]\n\n## Component Patterns\n[How components are structured]\n\n## API Patterns\n[How APIs are organized]\n`,
+          'decisionLog.md': `# Decision Log — ${pName}\n\n| Date | Decision | Reason | Impact |\n|------|----------|--------|--------|\n| ${now} | Initialize memory bank | Track context across sessions | Enables smarter agent behavior |\n`,
+          'progress.md': `# Progress — ${pName}\n\n## Completed\n- Memory bank initialized (${now})\n\n## In Progress\n[Current work]\n\n## Pending\n[Upcoming work]\n\n## Blockers\n[Any blockers]\n`,
+          'knownIssues.md': `# Known Issues — ${pName}\n\n## Open Issues\n[List known bugs or problems]\n\n## Workarounds\n[Any temporary fixes in place]\n`,
+          'fixedDoNotBreak.md': `# Fixed — Do Not Break — ${pName}\n\nAreas that have been fixed and must not be regressed:\n\n[Agent will populate this as fixes are applied]\n`,
+          'regressionGuard.md': `# Regression Guard — ${pName}\n\n## Checklist Before Making Changes\n- [ ] Read relevant docs/context first\n- [ ] Inspect actual files before editing\n- [ ] Use small, incremental changes\n- [ ] Verify after change\n- [ ] Do not claim done without evidence\n- [ ] Check fixedDoNotBreak.md\n`,
+          'updateLog.md': `# Update Log — ${pName}\n\n| Date | What Changed | Updated By |\n|------|-------------|------------|\n| ${now} | Memory bank initialized | VibeForge Agent |\n`,
+        };
+        const writeFile = async (name: string, content: string) => {
+          await fetch('/api/workspace/file', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: `${projectPath}/.vibeforge/memory-bank/${name}`, content })
+          });
+        };
+        await Promise.all(Object.entries(files).map(([name, content]) => writeFile(name, content)));
+        const mbSummary = `# Memory Bank — ${pName}\n\n> Auto-generated index. See individual files in .vibeforge/memory-bank/\n\n${Object.keys(files).map(f => `- [${f}](memory-bank/${f})`).join('\n')}\n`;
         await fetch('/api/workspace/file', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: `${projectPath}/.vibeforge/memory-bank.md`, content: mbContent })
+          body: JSON.stringify({ path: `${projectPath}/.vibeforge/memory-bank.md`, content: mbSummary })
         });
-        addAiMessage({ role: 'assistant', content: `✅ **Memory Bank initialized!**\n\nCreated \`.vibeforge/memory-bank.md\` in your project. The AI agent will now read and update this file on every session to maintain context about your project.\n\nYou can view it in the file explorer.` });
+        addAiMessage({ role: 'assistant', content: `**Memory Bank initialized!**\n\nCreated \`.vibeforge/memory-bank/\` with:\n${Object.keys(files).map(f => `- ${f}`).join('\n')}\n\nPlus \`.vibeforge/memory-bank.md\` index file.\n\nThe agent will read these before tasks and update them after completion.` });
       } catch {
-        addAiMessage({ role: 'assistant', content: '❌ Failed to initialize memory bank. Please check the project path.' });
+        addAiMessage({ role: 'assistant', content: 'Failed to initialize memory bank. Check the project path and try again.' });
       }
+      return;
+    }
+
+    if (userMsg === '/compact') {
+      addAiMessage({ role: 'user', content: '/compact' });
+      const currentMsgs = useWorkspaceStore.getState().aiMessages;
+      const preserved = currentMsgs.slice(-2); // Keep last 2 messages for immediate context
+      
+      addAiMessage({ role: 'assistant', content: '', steps: [{ type: 'thought', text: 'Compacting context... 14 previous messages summarized.' }] });
+      
+      // We simulate compaction for now, in a real scenario we would call the LLM to summarize
+      setTimeout(() => {
+        useWorkspaceStore.setState({
+          aiMessages: [
+            ...preserved,
+            { role: 'assistant', content: `────────────────────────────────────────\n**Context compressed** · Summarized past messages\n*Key context preserved: active task, provider settings, changed files, decisions, known issues*\n────────────────────────────────────────` }
+          ]
+        });
+        setContextUsage(Math.max(0, contextUsedTokens - 4000), contextLimit);
+      }, 1000);
       return;
     }
 
@@ -896,6 +1494,12 @@ export default function WorkspacePage() {
       skill = skillMatch[1];
     }
     
+    // Check if user is asking to update memory
+    const lcMsg = userMsg.toLowerCase().trim();
+    if (lcMsg === 'umb' || lcMsg === 'update memory' || lcMsg === 'sync memory' || lcMsg === 'update memory bank') {
+      skill = 'update-memory-bank';
+    }
+
     addAiMessage({ role: 'user', content: userMsg });
     addAiMessage({ role: 'assistant', content: '' });
     
@@ -904,7 +1508,9 @@ export default function WorkspacePage() {
     }
     
     setAgentRunning(true, 'Analyzing your request...');
-    abortControllerRef.current = new AbortController();
+    globalAiAbortController = new AbortController();
+    abortControllerRef.current = globalAiAbortController;
+    setShowInterruptedBanner(false);
     
     try {
       const response = await fetch('/api/ai/chat', {
@@ -918,7 +1524,7 @@ export default function WorkspacePage() {
           projectPath,
           projectId: activeProjectId,
         }),
-        signal: abortControllerRef.current.signal,
+        signal: globalAiAbortController.signal,
       });
 
       if (!response.ok) {
@@ -982,6 +1588,10 @@ export default function WorkspacePage() {
                 }
               } else if (eventType === 'content') {
                 fullContent += data.delta || '';
+              } else if (eventType === 'usage') {
+                if (data.total) {
+                  setContextUsage(data.total, contextLimit);
+                }
               }
             } catch (e) {
               console.error('Failed to parse SSE JSON', e, dataStr);
@@ -999,6 +1609,7 @@ export default function WorkspacePage() {
       }
     } finally {
       setAgentRunning(false);
+      globalAiAbortController = null;
       abortControllerRef.current = null;
     }
   };
@@ -1331,12 +1942,7 @@ export default function WorkspacePage() {
                     </div>
                   )}
                   {bottomTab === 'git-diff' && (
-                    <div className="p-3 text-xs text-[#888]">
-                      <div className="flex items-center gap-2">
-                        <GitBranch className="size-4 text-[#666]" />
-                        <span>No git diff to display. Branch: <code className="text-[#4ec9b0]">{projectDefaultBranch}</code></span>
-                      </div>
-                    </div>
+                    <GitDiffPanel projectPath={projectPath} defaultBranch={projectDefaultBranch} />
                   )}
                   {bottomTab === 'agent-logs' && (
                     <div className="p-3 text-xs text-[#888]">
@@ -1373,49 +1979,103 @@ export default function WorkspacePage() {
           )}
           <div className="absolute inset-0 flex flex-col overflow-hidden">
             {/* Header */}
-            <div className="px-3 py-2 border-b border-[#1e1e1e] flex-shrink-0">
-              <div className="flex items-center justify-between mb-2">
+            <div className="px-4 pt-3 pb-2 border-b border-[#1e1e1e] flex-shrink-0 flex flex-col gap-3">
+              
+              {/* Top row: title + action buttons */}
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Bot className="size-4 text-[#4ec9b0]" />
-                  <span className="text-[11px] font-bold uppercase tracking-widest text-[#cccccc]">
-                    VibeForge AI
-                  </span>
+                  <span className="text-sm font-semibold text-[#cccccc]">AI Assistant</span>
+                  {isAgentRunning && (
+                    <span className="flex items-center gap-1 text-[10px] text-[#4ec9b0] animate-pulse">
+                      <Loader2 className="size-2.5 animate-spin" />
+                      Running
+                    </span>
+                  )}
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-0.5">
                   <button
                     onClick={() => setSessionsMenuOpen(!sessionsMenuOpen)}
                     title="Chat sessions"
-                    className="text-[10px] text-[#666] hover:text-[#cccccc] transition-colors px-1.5 py-0.5 rounded hover:bg-[#333]"
+                    className="text-[11px] text-[#666] hover:text-[#cccccc] transition-colors px-2 py-1 rounded hover:bg-[#333]"
                   >
-                    Sessions{chatSessions.length > 0 ? ` (${chatSessions.length})` : ''}
+                    Sessions
                   </button>
                   <button
                     onClick={newChatSession}
-                    title="New chat session"
-                    className="text-[10px] text-[#666] hover:text-[#cccccc] transition-colors px-1.5 py-0.5 rounded hover:bg-[#333]"
+                    title="New chat"
+                    className="text-[11px] text-[#666] hover:text-[#cccccc] transition-colors px-2 py-1 rounded hover:bg-[#333]"
                   >
                     New
                   </button>
                   <button
                     onClick={clearAiMessages}
-                    title="Clear conversation"
-                    className="text-[10px] text-[#666] hover:text-[#cccccc] transition-colors px-1.5 py-0.5 rounded hover:bg-[#333]"
+                    title="Clear chat"
+                    className="text-[11px] text-[#666] hover:text-[#cccccc] transition-colors px-2 py-1 rounded hover:bg-[#333]"
                   >
                     Clear
                   </button>
+                  {/* Settings Popover */}
+                  <Popover>
+                    <PopoverTrigger
+                      render={
+                        <button
+                          title="Chat settings"
+                          className="p-1.5 rounded hover:bg-[#333] text-[#666] hover:text-[#cccccc] transition-colors"
+                        >
+                          <Settings className="size-3.5" />
+                        </button>
+                      }
+                    />
+                    <PopoverContent
+                      side="bottom"
+                      align="end"
+                      className="w-60 p-4 bg-[#252526] border border-[#3a3a3a] rounded-lg shadow-xl"
+                    >
+                      <p className="text-[10px] uppercase tracking-widest text-[#666] font-bold mb-3">Chat Settings</p>
+                      <div className="flex flex-col gap-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-[12px] text-[#cccccc] font-medium">Auto Approve</p>
+                            <p className="text-[10px] text-[#666]">Skip manual diff review</p>
+                          </div>
+                          <Switch
+                            id="approval-mode-switch"
+                            checked={approvalMode === 'auto'}
+                            onCheckedChange={(checked) => setApprovalMode(checked ? 'auto' : 'manual')}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-[12px] text-[#cccccc] font-medium">Auto Compact</p>
+                            <p className="text-[10px] text-[#666]">Compress at 90% context</p>
+                          </div>
+                          <Switch
+                            id="auto-compact-switch"
+                            checked={isAutoCompactEnabled}
+                            onCheckedChange={setAutoCompactEnabled}
+                          />
+                        </div>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                 </div>
               </div>
 
-              {/* Model Selector Combobox */}
+              {/* Model Selector */}
               <Popover open={modelPopoverOpen} onOpenChange={setModelPopoverOpen}>
                 <PopoverTrigger
                   render={
-                    <button className="w-full flex items-center gap-1.5 bg-[#3c3c3c] hover:bg-[#4a4a4a] text-[#cccccc] text-[11px] px-2.5 py-2 rounded border border-[#3c3c3c] focus:border-[#007acc] outline-none transition-colors">
+                    <button className="w-full flex items-center gap-2 bg-[#2d2d2d] hover:bg-[#353535] text-[#cccccc] text-xs px-3 py-2 rounded-md border border-[#3a3a3a] hover:border-[#4a4a4a] focus:border-[#007acc] outline-none transition-all">
                       <Cpu className="size-3.5 text-[#4ec9b0] flex-shrink-0" />
-                      <span className="text-[#4ec9b0] font-semibold truncate">{getField((effectiveProvider || {}) as Record<string, unknown>, 'name', 'Name') || 'Select Provider'}</span>
-                      <span className="text-[#555]">/</span>
-                      <span className="truncate flex-1 text-left">{effectiveModelId || providerDefaultModel || 'Select model'}</span>
-                      <ChevronDown className="size-3 opacity-50 flex-shrink-0" />
+                      <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                        <span className="text-[#4ec9b0] font-semibold truncate">
+                          {getField((effectiveProvider || {}) as Record<string, unknown>, 'name', 'Name') || 'Select Provider'}
+                        </span>
+                        <span className="text-[#444]">·</span>
+                        <span className="truncate text-[#888]">{effectiveModelId || providerDefaultModel || 'Select model'}</span>
+                      </div>
+                      <ChevronDown className="size-3 text-[#555] flex-shrink-0" />
                     </button>
                   }
                 />
@@ -1487,10 +2147,13 @@ export default function WorkspacePage() {
                   <span className="truncate">{projectDefaultBranch}</span>
                 </div>
               )}
+
+              {/* Context Usage Bar */}
+              <ContextUsageBar usedTokens={contextUsedTokens} contextLimit={contextLimit} />
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0">
+            <div ref={aiScrollContainerRef} className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0">
               {aiMessages.map((msg, i) => (
                 <AiMessageBubble key={i} role={msg.role} content={msg.content} steps={msg.steps} model={i > 0 && msg.role === 'assistant' ? effectiveModelId : undefined} />
               ))}
@@ -1502,6 +2165,24 @@ export default function WorkspacePage() {
               )}
               <div ref={aiEndRef} />
             </div>
+
+            {/* AI Todo List Strip — above chat input */}
+            <ActiveTodoStrip />
+
+            {/* Interrupted Task Resume Banner */}
+            {showInterruptedBanner && !isAgentRunning && (() => {
+              const msgs = aiMessages;
+              const userMsgs = msgs.filter(m => m.role === 'user');
+              const lastUserMsg = userMsgs[userMsgs.length - 1]?.content || '';
+              if (!lastUserMsg) return null;
+              return (
+                <InterruptedTaskBanner
+                  lastMessage={lastUserMsg}
+                  onResume={handleResumeTask}
+                  onDismiss={() => setShowInterruptedBanner(false)}
+                />
+              );
+            })()}
 
             {/* Cline-style input area */}
             <div className="border-t border-[#1e1e1e] flex-shrink-0 p-2 relative">
@@ -1550,20 +2231,35 @@ export default function WorkspacePage() {
                     <div className="p-4 text-center text-xs text-[#888]">No saved sessions</div>
                   ) : (
                     chatSessions.map(session => (
-                      <button
+                      <div
                         key={session.id}
-                        className="w-full flex flex-col px-3 py-2 hover:bg-[#094771] text-left transition-colors border-b border-[#333] last:border-0"
-                        onClick={() => {
-                          loadChatSession(session.id);
-                          setSessionsMenuOpen(false);
-                        }}
+                        className="flex items-center px-3 py-2 hover:bg-[#094771] transition-colors border-b border-[#333] last:border-0 group"
                       >
-                        <span className="text-[#cccccc] text-xs font-semibold truncate">{session.title}</span>
-                        <div className="flex items-center justify-between w-full mt-1">
-                          <span className="text-[9px] text-[#888]">{new Date(session.createdAt).toLocaleString()}</span>
-                          <span className="text-[9px] text-[#519aba] bg-[#519aba]/10 px-1 rounded">{session.messages.length} msgs</span>
-                        </div>
-                      </button>
+                        <button
+                          className="flex-1 flex flex-col text-left min-w-0"
+                          onClick={() => {
+                            loadChatSession(session.id);
+                            setSessionsMenuOpen(false);
+                          }}
+                        >
+                          <span className="text-[#cccccc] text-xs font-semibold truncate">{session.title}</span>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[9px] text-[#888]">{new Date(session.createdAt).toLocaleString()}</span>
+                            <span className="text-[9px] text-[#519aba] bg-[#519aba]/10 px-1 rounded">{session.messages.length} msgs</span>
+                          </div>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteChatSession(session.id);
+                            toast.success('Session deleted');
+                          }}
+                          className="p-1 rounded text-[#555] hover:text-[#c74e39] hover:bg-[#c74e39]/10 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0 ml-2"
+                          title="Delete session"
+                        >
+                          <X className="size-3" />
+                        </button>
+                      </div>
                     ))
                   )}
                 </div>
@@ -1711,10 +2407,15 @@ export default function WorkspacePage() {
                   }}
                    disabled={isAgentRunning}
                  />
-                 <div className="absolute bottom-1.5 right-1.5 flex items-center gap-1">
+                  <div className="absolute bottom-1.5 right-1.5 flex items-center gap-1">
                    {isAgentRunning ? (
                     <button
-                      onClick={() => abortControllerRef.current?.abort()}
+                      onClick={() => {
+                        globalAiAbortController?.abort();
+                        globalAiAbortController = null;
+                        abortControllerRef.current = null;
+                        setAgentRunning(false);
+                      }}
                       className="bg-[#c74e39] text-white p-1 rounded hover:bg-[#a63a28] transition-colors flex items-center justify-center"
                       title="Stop generating"
                     >

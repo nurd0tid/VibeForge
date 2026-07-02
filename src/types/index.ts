@@ -120,6 +120,52 @@ export interface AgentRun extends BaseRecord {
   error_message?: string;
 }
 
+export type TodoStatus = "pending" | "running" | "done" | "failed" | "skipped";
+
+export interface AgentTodoItem {
+  id: string;
+  taskId?: string;
+  sessionId: string;
+  title: string;
+  status: TodoStatus;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+  error?: string;
+}
+
+export interface AgentTodoList {
+  id: string;
+  taskId?: string;
+  sessionId: string;
+  source: "chat" | "play_task" | "multi_task" | "subagent";
+  status: "active" | "completed" | "dismissed";
+  items: AgentTodoItem[];
+  collapsed: boolean;
+  dismissedByUser: boolean;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+}
+
+export type AgentActivityEvent =
+  | { type: "task.started"; taskId: string; title: string }
+  | { type: "task.completed"; taskId: string; title: string }
+  | { type: "task.failed"; taskId: string; title: string; error: string }
+  | { type: "todo.created"; items: AgentTodoItem[] }
+  | { type: "todo.updated"; itemId: string; status: TodoStatus }
+  | { type: "file.read"; path: string; lineStart?: number; lineEnd?: number }
+  | { type: "folder.search.started"; query: string; folder?: string }
+  | { type: "folder.search.result"; query: string; matches: any[] }
+  | { type: "file.edit.started"; path: string }
+  | { type: "file.edit.patch.generated"; path: string; patch: string }
+  | { type: "file.edit.applied"; path: string }
+  | { type: "file.edit.rejected"; path: string }
+  | { type: "terminal.command"; command: string }
+  | { type: "terminal.output"; output: string }
+  | { type: "error"; message: string }
+  | { type: "context.compacted"; summary: string; preservedItems: string[]; beforeTokenCount?: number; afterTokenCount?: number };
+
 export interface AgentLog extends BaseRecord {
   run_id: number;
   project_id: number;

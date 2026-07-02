@@ -42,16 +42,54 @@ async function executeTool(name: string, args: Record<string, string>, projectRo
         return ((stdout || '') + (stderr ? `\nSTDERR: ${stderr}` : '')).slice(0, 4000) || '(no output)';
       } catch (e: unknown) { return `Error: ${e instanceof Error ? e.message : String(e)}`; }
     }
+    case 'memory_list': {
+      try {
+        const memoryPath = path.resolve(projectRoot, '.vibeforge/memory-bank');
+        const entries = await fs.readdir(memoryPath, { withFileTypes: true });
+        return entries.map((e) => e.name).join('\n') || '(empty memory bank)';
+      } catch (e: unknown) { return `Error reading memory bank: ${e instanceof Error ? e.message : String(e)}`; }
+    }
+    case 'memory_read': {
+      try {
+        const filePath = path.resolve(projectRoot, `.vibeforge/memory-bank/${args.file.replace(/^\//, '')}`);
+        if (!filePath.startsWith(path.resolve(projectRoot, '.vibeforge/memory-bank'))) {
+          return 'Error: Invalid memory bank file path';
+        }
+        const content = await fs.readFile(filePath, 'utf-8');
+        return content.length > 8000 ? content.slice(0, 8000) + '\n...(truncated)' : content;
+      } catch (e: unknown) { return `Error reading memory file: ${e instanceof Error ? e.message : String(e)}`; }
+    }
+    case 'memory_write': {
+      try {
+        const filePath = path.resolve(projectRoot, `.vibeforge/memory-bank/${args.file.replace(/^\//, '')}`);
+        if (!filePath.startsWith(path.resolve(projectRoot, '.vibeforge/memory-bank'))) {
+          return 'Error: Invalid memory bank file path';
+        }
+        await fs.mkdir(path.dirname(filePath), { recursive: true });
+        await fs.writeFile(filePath, args.content, 'utf-8');
+        return `Successfully wrote to memory file ${args.file}`;
+      } catch (e: unknown) { return `Error writing memory file: ${e instanceof Error ? e.message : String(e)}`; }
+    }
     default: return `Unknown tool: ${name}`;
   }
 }
 
-/** Parse the LLM streaming response into a complete string */
-async function readStream(body: ReadableStream<Uint8Array>): Promise<string> {
+interface StreamResult {
+  fullText: string;
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
+}
+
+/** Parse the LLM streaming response into a complete string and extract usage */
+async function readStream(body: ReadableStream<Uint8Array>): Promise<StreamResult> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let fullText = '';
   let buffer = '';
+  let usage: StreamResult['usage'] = undefined;
   
   while (true) {
     const { value, done } = await reader.read();
@@ -67,12 +105,15 @@ async function readStream(body: ReadableStream<Uint8Array>): Promise<string> {
       try {
         const chunk = JSON.parse(raw);
         fullText += chunk.choices?.[0]?.delta?.content || '';
+        if (chunk.usage) {
+          usage = chunk.usage;
+        }
       } catch {
         // ignore partial
       }
     }
   }
-  return fullText;
+  return { fullText, usage };
 }
 
 /** Parse tool calls from LLM response (prompt-based, XML-like format) */
@@ -127,6 +168,8 @@ export async function POST(req: Request) {
 
     const baseUrl = (getField(rec, 'base_url', 'Base URL') || 'https://api.openai.com/v1').replace(/\/$/, '');
     const targetModel = model || getField(rec, 'default_model', 'Default Model') || 'gpt-4o';
+    const maxOutputTokensRaw = Number(getField(rec, 'max_output_tokens', 'Max Output Tokens') || -1);
+    const contextWindowRaw = Number(getField(rec, 'context_window', 'Context Window') || 0);
     const url = `${baseUrl}/chat/completions`;
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -162,12 +205,24 @@ TOOLS AVAILABLE (use these to interact with the project):
 4. run_command — Run a shell command
    Format: <tool_use><name>run_command</name><args>{"command": "pnpm build"}</args></tool_use>
 
+5. memory_list — List all files in the project memory bank (.vibeforge/memory-bank/)
+   Format: <tool_use><name>memory_list</name><args>{}</args></tool_use>
+
+6. memory_read — Read a specific memory bank file
+   Format: <tool_use><name>memory_read</name><args>{"file": "activeContext.md"}</args></tool_use>
+
+7. memory_write — Write or update a memory bank file
+   Format: <tool_use><name>memory_write</name><args>{"file": "activeContext.md", "content": "## Current Focus\n..."}</args></tool_use>
+
 RULES:
-- Always use tools to explore the actual project before answering.
+- ALWAYS read memory bank before starting work: run memory_list then memory_read for relevant files.
+- After completing any task: run memory_write to update activeContext.md, progress.md, and updateLog.md.
+- Do NOT make up file contents — always read them.
 - All paths are relative to project root.
 - Use list_directory first to understand structure.
 - After tool results, continue reasoning and answer the user.
-- Do NOT make up file contents — always read them.
+- Prefer memory_read over read_file for .vibeforge/memory-bank files.
+- If user types UMB, update memory, or sync memory: update all relevant memory files.
 
 When you need to use a tool, output the <tool_use> block. The system will execute it and return the result.`;
 
@@ -208,15 +263,20 @@ When you need to use a tool, output the <tool_use> block. The system will execut
           while (iteration < MAX_ITERATIONS) {
             iteration++;
 
-            // Call the LLM with streaming (9Router only supports stream mode)
+            // Build request body — omit max_tokens if -1 or 0 (= unlimited / provider default)
+            const requestBody: Record<string, unknown> = {
+              model: targetModel,
+              messages: chatMessages,
+              stream: true,
+            };
+            if (maxOutputTokensRaw > 0) {
+              requestBody.max_tokens = maxOutputTokensRaw;
+            }
+
             const llmRes = await fetch(url, {
               method: 'POST',
               headers,
-              body: JSON.stringify({
-                model: targetModel,
-                messages: chatMessages,
-                stream: true,
-              }),
+              body: JSON.stringify(requestBody),
               // signal: AbortSignal.timeout(60000),
             });
 
@@ -232,7 +292,12 @@ When you need to use a tool, output the <tool_use> block. The system will execut
             }
 
             // Read the full streamed response
-            const responseText = await readStream(llmRes.body);
+            const streamRes = await readStream(llmRes.body);
+            const responseText = streamRes.fullText;
+            
+            if (streamRes.usage) {
+              emit('usage', { used: streamRes.usage.prompt_tokens, total: streamRes.usage.total_tokens });
+            }
 
             // Parse any tool calls from the response
             const toolCalls = parseToolCalls(responseText);

@@ -11,8 +11,9 @@ You are an AI software engineer working on VibeForge.
 - MASTER_PROMPT.md
 - SESSION.md
 - NEXT_ACTION.md
-- docs/ai/project-context.md
-- docs/standards/definition-of-done.md
+- docs/agent/HOW_VIBEFORGE_WORKS.md
+- docs/agent/DONE_CRITERIA.md
+- docs/agent/REGRESSION_GUARD.md
 
 ## Project Structure
 - Next.js 16 App Router with src/ directory
@@ -25,9 +26,17 @@ You are an AI software engineer working on VibeForge.
 - MCP Config stored locally in `.vibeforge/mcp.json`
 - Local Provider Config stored locally in `.vibeforge/providers.json`
 
+## Agent Features & Rules
+- **Structured File Editing:** All file edits use the `edit_file` tool which generates an inline diff in the Chat Workspace.
+- **Provider Connection:** Supports OpenAI, Anthropic, Gemini, OpenRouter, DeepSeek, Groq, 9Router, and custom setups. Fallback to `Provider` if name missing. Test Connection must show exact display name.
+- **Context Management:** Token progress bar is active. Use `/compact` command to compress context automatically when usage gets high.
+- **AI Todo List:** When running a prompt, generate tasks into the `ActiveTodoStrip` above the chat input.
+- **Memory Bank:** A project's `.vibeforge/memory-bank.md` is loaded as project context in the prompt. Use `/init-memory` to generate one.
+
 ## NocoDB Field Access
 NocoDB returns JSON with column Title as key. Always check both:
 - `record.field_name` AND `record['Field Name']`
+- Use the `getField` and `getFieldBool` helpers from `src/lib/nocodb-fields.ts`
 
 ## Commands
 - `pnpm dev` — start development server
@@ -35,13 +44,13 @@ NocoDB returns JSON with column Title as key. Always check both:
 - `pnpm run typecheck` — TypeScript check
 - `pnpm run lint` — ESLint check
 
-## Rules
-- Never expose API keys in client code or logs
-- Never mark task Done if build/typecheck fails
-- Always use Context7 MCP for package docs
-- Always use Sequential Thinking MCP for complex work
-- Keep README.md as human documentation
-- UI must feel like VS Code, not generic dashboard
-- Use Sonner for toasts, SweetAlert2 for destructive confirmations
-- Use react-hook-form Controller for Select components
-- Respect MCP server configurations when acting as the AI Agent
+## Guardrails (Cheap Model Guardrails)
+- Read relevant docs first
+- Inspect actual files before editing
+- Never assume file paths
+- Use small changes
+- Verify after change
+- Do not claim done without evidence
+- Summarize changed files
+- Show remaining risks
+- Stop if uncertain instead of inventing

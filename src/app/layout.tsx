@@ -17,6 +17,10 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "VibeForge",
   description: "VibeForge — AI Coding Workspace",
+  icons: {
+    icon: "/icon.png",
+    apple: "/icon.png",
+  },
 };
 
 export default function RootLayout({

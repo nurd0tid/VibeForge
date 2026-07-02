@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
@@ -60,8 +61,8 @@ export function Sidebar() {
         isCollapsed ? "justify-center" : "justify-between"
       )}>
         <div className="flex items-center gap-2 overflow-hidden">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground text-sm font-bold">
-            V
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-transparent">
+            <Image src="/icon.png" alt="VibeForge Logo" width={32} height={32} className="object-contain" />
           </div>
           {!isCollapsed && (
             <span className="text-base font-semibold tracking-tight text-sidebar-foreground truncate">

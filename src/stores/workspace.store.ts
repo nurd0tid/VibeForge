@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { AgentTodoList, TodoStatus } from '@/types';
 
 interface OpenFile {
   path: string;
@@ -45,6 +46,11 @@ interface WorkspaceState {
   activeChatSessionId: string | null;
   isAgentRunning: boolean;
   agentStatusText: string;
+  activeTodoList: AgentTodoList | null;
+  approvalMode: 'manual' | 'auto';
+  contextUsedTokens: number;
+  contextLimit: number;
+  isAutoCompactEnabled: boolean;
 
   openFile: (path: string, name: string, content: string) => void;
   closeFile: (path: string) => void;
@@ -60,9 +66,16 @@ interface WorkspaceState {
   triggerCollapseAll: () => void;
   saveChatSession: () => void;
   loadChatSession: (id: string) => void;
+  deleteChatSession: (id: string) => void;
   newChatSession: () => void;
   setAgentRunning: (running: boolean, status?: string) => void;
   setAgentStatusText: (text: string) => void;
+  setActiveTodoList: (list: AgentTodoList | null) => void;
+  updateTodoItemStatus: (itemId: string, status: TodoStatus) => void;
+  dismissTodoList: () => void;
+  setApprovalMode: (mode: 'manual' | 'auto') => void;
+  setContextUsage: (used: number, limit: number) => void;
+  setAutoCompactEnabled: (enabled: boolean) => void;
 }
 
 const INITIAL_MESSAGES: AiMessage[] = [
@@ -82,6 +95,11 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       activeChatSessionId: null,
       isAgentRunning: false,
       agentStatusText: 'Analyzing your request...',
+      activeTodoList: null,
+      approvalMode: 'auto',
+      contextUsedTokens: 0,
+      contextLimit: 128000,
+      isAutoCompactEnabled: false,
 
       openFile: (path, name, content) => {
         const existing = get().openFiles.find((f) => f.path === path);
@@ -198,6 +216,20 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         });
       },
 
+      deleteChatSession: (id) => {
+        set((state) => {
+          const filtered = state.chatSessions.filter((s) => s.id !== id);
+          const wasActive = state.activeChatSessionId === id;
+          return {
+            chatSessions: filtered,
+            ...(wasActive ? {
+              activeChatSessionId: null,
+              aiMessages: [...INITIAL_MESSAGES],
+            } : {}),
+          };
+        });
+      },
+
       newChatSession: () => {
         get().saveChatSession();
         set({
@@ -214,6 +246,48 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       },
 
       setAgentStatusText: (text) => set({ agentStatusText: text }),
+
+      setActiveTodoList: (list) => set({ activeTodoList: list }),
+
+      updateTodoItemStatus: (itemId, status) => {
+        set((state) => {
+          const todo = state.activeTodoList;
+          if (!todo) return {};
+          const items = todo.items.map((item) =>
+            item.id === itemId ? { ...item, status, updatedAt: new Date().toISOString() } : item
+          );
+          const allDone = items.every((i) => i.status === 'done' || i.status === 'skipped');
+          return {
+            activeTodoList: {
+              ...todo,
+              items,
+              status: allDone ? 'completed' : 'active',
+              updatedAt: new Date().toISOString(),
+              ...(allDone ? { completedAt: new Date().toISOString() } : {}),
+            },
+          };
+        });
+      },
+
+      dismissTodoList: () => {
+        set((state) => {
+          if (!state.activeTodoList) return {};
+          return {
+            activeTodoList: {
+              ...state.activeTodoList,
+              dismissedByUser: true,
+              status: 'dismissed',
+              updatedAt: new Date().toISOString(),
+            },
+          };
+        });
+      },
+
+      setApprovalMode: (mode) => set({ approvalMode: mode }),
+
+      setContextUsage: (used, limit) => set({ contextUsedTokens: used, contextLimit: limit }),
+
+      setAutoCompactEnabled: (enabled) => set({ isAutoCompactEnabled: enabled }),
     }),
     {
       name: 'vibeforge-workspace',
@@ -221,8 +295,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         chatSessions: state.chatSessions,
         activeChatSessionId: state.activeChatSessionId,
         aiMessages: state.aiMessages,
-        isAgentRunning: state.isAgentRunning,
-        agentStatusText: state.agentStatusText,
+        approvalMode: state.approvalMode,
+        contextLimit: state.contextLimit,
+        isAutoCompactEnabled: state.isAutoCompactEnabled,
       }),
     }
   )

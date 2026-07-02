@@ -1,27 +1,50 @@
 # Skill: Testing
 
 ## Purpose
+Run and write tests to verify functionality, prevent regression, and ensure code reliability.
 
-Run checks and validate UI/API/data behavior.
+## When to Use
+- After writing a feature or a bug fix
+- Before committing changes
+- Before executing a deployment
 
-## Required Behavior
+## Pre-Conditions (Read Before Acting)
+- [ ] Read AGENTS.md
+- [ ] Read memory bank (`activeContext.md`, `progress.md`)
+- [ ] Check relevant docs (`README.md`, `CLAUDE.md`, `docs/agent/REGRESSION_GUARD.md`)
+- [ ] Identify the test framework used in this project
+- [ ] Inspect existing test files for style and imports
 
-- Read project context.
-- Use Context7 when package docs are involved.
-- Use Sequential Thinking for complex reasoning.
-- Follow AGENTS.md.
-- Save output to NocoDB if the skill produces workflow data.
-- Do not mark task done if blockers remain.
+## Steps
+1. Locate existing tests for the target module
+2. Identify the appropriate test command (e.g. `pnpm test`, `jest`, `vitest`)
+3. Write test cases covering: positive path, edge cases, error handling
+4. Mock dependencies where necessary, respecting project conventions
+5. Run the test suite for the modified file
+6. Run the full test suite to ensure no regressions
+7. Verify test coverage if required by project guidelines
+
+## Anti-Rationalization Rules
+| Excuse | Rebuttal |
+|--------|----------|
+| "I'll do X later" | No. Do it now or log it as a blocker. |
+| "The changes are too simple to test" | Simple changes often break unexpected dependencies. Test anyway. |
+| "I'll write tests after deployment" | Never deploy untested code. |
+| "Mocking is too hard" | Use existing mocks as examples. Don't skip tests. |
+
+## Verification (Definition of Done)
+- [ ] Tests run successfully with no failures
+- [ ] Test coverage meets project standards
+- [ ] Build passes
+- [ ] No undefined/null errors in test execution
+- [ ] Memory bank updated with test results
 
 ## Output Format
+Summary of executed tests, pass/fail status, and coverage metrics in chat.
 
-- Summary
-- Actions
-- Files changed if any
-- NocoDB records created/updated
-- Blockers
-- Next steps
+## Files Affected
+- Source files and adjacent `.test.ts` or `.spec.ts` files
+- `.vibeforge/memory-bank/progress.md`
 
-## Done Rule
-
-This skill is complete only when its output is saved or reflected in the correct place.
+## Failure Handling
+If tests fail, diagnose and fix the issue. Do not bypass or disable tests unless explicitly directed and documented.

@@ -1,37 +1,50 @@
 # Skill: Daily Log
 
 ## Purpose
+Document daily progress, summarize completed work, identify blockers, and plan immediate next steps to maintain momentum and context.
 
-Create a daily log after a work session and store it in NocoDB daily_logs.
+## When to Use
+- End of a coding session
+- User explicitly requests a daily summary or wrap-up
+- Transitioning between major context shifts
 
-## Required Behavior
+## Pre-Conditions (Read Before Acting)
+- [ ] Read AGENTS.md
+- [ ] Read memory bank (`activeContext.md`, `progress.md`)
+- [ ] Check relevant docs
+- [ ] Review `SESSION.md` and git history (if applicable) for the day's activity
+- [ ] Verify NocoDB connection for logging
 
-1. Run `run_command` with `git status` and `git diff` (or `git log`) to see which files were modified and what commits were made.
-2. Read the changes to understand what was completed during the session.
-3. Read `docs/ai/project-context.md` for current context.
-4. Use Context7 when package docs are involved.
-5. Use Sequential Thinking for complex reasoning.
-6. Follow AGENTS.md constraints.
-7. Save the daily log to NocoDB using appropriate API routes or helpers.
-8. Do not mark task done if blockers remain.
+## Steps
+1. Aggregate the day's completed tasks from chat history, git, or NocoDB
+2. Identify and document any lingering blockers or unresolved issues
+3. Draft a concise summary of the day's achievements
+4. Outline the next logical steps for the following session
+5. Use NocoDB field helpers to map data correctly
+6. Save the log entry to NocoDB
 
-## Workflow
+## Anti-Rationalization Rules
+| Excuse | Rebuttal |
+|--------|----------|
+| "I'll do X later" | No. Do it now or log it as a blocker. |
+| "Nothing notable happened" | Always log something. Even debugging attempts are progress. |
+| "I'll just update memory bank" | Memory bank is high-level. Daily log tracks chronological progress. |
+| "Too tired to write details" | Summarize concisely, but do not skip. |
 
-1. Use `run_command` to inspect recent git commits: `git log -n 5 --oneline` or `git status`.
-2. Map the changes to tasks or features.
-3. Summarize the achievements, files changed, and any issues encountered.
-4. Save the log to NocoDB.
-5. Output the daily log to the user.
+## Verification (Definition of Done)
+- [ ] Summary accurately reflects work done
+- [ ] Blockers are clearly highlighted
+- [ ] Build passes (ensure current state is stable)
+- [ ] Log entry successfully saved to NocoDB
+- [ ] Memory bank updated (`progress.md` sync)
 
 ## Output Format
+Markdown summary printed to chat, followed by confirmation of save to NocoDB.
 
-- **Summary:** Brief description of today's work.
-- **Git Changes:** List of recent commits and modified files.
-- **Achievements:** Key milestones completed today.
-- **NocoDB Records:** Log entry created/updated.
-- **Blockers:** Any lingering issues.
-- **Next Steps:** Tasks for the next session.
+## Files Affected
+- NocoDB remote records
+- `.vibeforge/memory-bank/progress.md`
+- `SESSION.md`
 
-## Done Rule
-
-This skill is complete only when the daily log is saved in NocoDB.
+## Failure Handling
+If NocoDB save fails, write the daily log to a local `.daily-log.md` file and alert the user.

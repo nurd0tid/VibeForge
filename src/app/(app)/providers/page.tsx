@@ -35,7 +35,8 @@ const providerSchema = z.object({
   is_active: z.boolean().default(true),
   supports_reasoning: z.boolean().default(false),
   supports_tools: z.boolean().default(false),
-  // Connection / Config details
+  context_window: z.coerce.number().optional(),
+  max_output_tokens: z.coerce.number().optional(),
   apiKeyMode: z.enum(['env', 'direct-local', 'temporary', 'none']),
   apiKeyEnvName: z.string().optional(),
   directApiKey: z.string().optional(),
@@ -139,6 +140,8 @@ export default function ProvidersPage() {
       is_active: true,
       supports_reasoning: true,
       supports_tools: true,
+      context_window: 128000,
+      max_output_tokens: -1,
       apiKeyMode: 'direct-local',
       apiKeyEnvName: 'OPENAI_API_KEY',
       directApiKey: '',
@@ -191,16 +194,17 @@ export default function ProvidersPage() {
         }),
       });
       const data = await res.json();
+      const displayName = watch('name') || currentPreset?.name || 'Provider';
       if (data.success) {
         setTestResult({ success: true, message: 'Connection successful' });
-        toast.success('Connection successful');
+        toast.success(`${displayName}: Connection successful`);
       } else {
         setTestResult({ success: false, message: data.error || 'Connection failed' });
-        toast.error('Connection failed', { description: data.error });
+        toast.error(`${displayName}: Connection failed`, { description: data.error });
       }
     } catch (err: any) {
       setTestResult({ success: false, message: err.message || 'Test failed' });
-      toast.error('Test failed', { description: err.message });
+      toast.error(`${watch('name') || currentPreset?.name || 'Provider'}: Test failed`, { description: err.message });
     } finally {
       setIsTesting(false);
     }
@@ -357,13 +361,16 @@ export default function ProvidersPage() {
         }),
       });
       const data = await testRes.json();
+      const displayName = getField(rec, 'name', 'Name') || provider.name || provider.Id || 'Provider';
       if (data.success) {
-        toast.success(`${provider.name}: Connection successful`);
+        toast.success(`${displayName}: Connection successful`);
       } else {
-        toast.error(`${provider.name}: Connection failed`, { description: data.error });
+        toast.error(`${displayName}: Connection failed`, { description: data.error });
       }
     } catch (err: any) {
-      toast.error(`${provider.name}: Test failed`, { description: err.message });
+      const rec = provider as unknown as Record<string, unknown>;
+      const displayName = getField(rec, 'name', 'Name') || provider.name || provider.Id || 'Provider';
+      toast.error(`${displayName}: Test failed`, { description: err.message });
     } finally {
       setIsInlineTestingId(null);
     }
@@ -592,6 +599,19 @@ export default function ProvidersPage() {
                     ) : (
                       <Input id="provider-model" {...register('default_model')} placeholder="e.g. gpt-4o, claude-3-opus" />
                     )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 mt-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="provider-ctx">Context Window</Label>
+                      <Input id="provider-ctx" type="number" {...register('context_window')} placeholder="128000" />
+                      <p className="text-xs text-muted-foreground">Max input tokens</p>
+                    </div>
+                     <div className="space-y-2">
+                       <Label htmlFor="provider-max-out">Max Output Tokens</Label>
+                       <Input id="provider-max-out" type="number" {...register('max_output_tokens')} placeholder="4096" />
+                       <p className="text-xs text-muted-foreground">Max generation length (-1 is unlimited)</p>
+                     </div>
                   </div>
                 </div>
 

@@ -33,17 +33,32 @@ const statusColor: Record<string, 'default' | 'secondary' | 'destructive' | 'out
   pending: 'outline',
 };
 
-function inferProvider(model: string, providerId: string): string {
-  const m = (model || '').toLowerCase();
-  const p = (providerId || '').toLowerCase();
+function toSafeString(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return String(record.id ?? record.name ?? record.providerId ?? '');
+  }
+  return '';
+}
+
+function inferProvider(model: unknown, providerId: unknown): string {
+  const m = toSafeString(model).toLowerCase();
+  const p = toSafeString(providerId).toLowerCase();
   if (m.includes('9router') || m.includes('opus-sonnet') || p.includes('9router')) return '9Router';
   if (m.includes('gpt') || m.includes('o1') || m.includes('o3') || m.includes('o4') || p.includes('openai')) return 'OpenAI';
   if (m.includes('claude') || p.includes('anthropic')) return 'Anthropic';
-  if (m.includes('gemini') || p.includes('gemini') || p.includes('google')) return 'Google';
-  if (m.includes('llama') || m.includes('mistral') || m.includes('deepseek')) return 'OpenRouter';
+  if (m.includes('gemini') || p.includes('gemini') || p.includes('google')) return 'Google Gemini';
+  if (m.includes('deepseek') || p.includes('deepseek')) return 'DeepSeek';
+  if (m.includes('mistral') || p.includes('mistral')) return 'Mistral';
+  if (m.includes('groq') || p.includes('groq')) return 'Groq';
+  if (m.includes('openrouter') || p.includes('openrouter')) return 'OpenRouter';
+  if (m.includes('llama') || m.includes('qwen')) return 'OpenRouter';
   if (p.includes('ollama') || m.includes('ollama')) return 'Ollama';
-  if (p.includes('opencode') || m.includes('opencode')) return 'OpenCode';
-  return 'Unknown';
+  if (m.includes('lmstudio') || m.includes('lm-studio') || p.includes('lmstudio') || p.includes('lm-studio')) return 'LM Studio';
+  return 'Custom Provider';
 }
 
 function formatLatency(ms: number): string {

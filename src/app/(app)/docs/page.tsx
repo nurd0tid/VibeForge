@@ -16,7 +16,12 @@ import {
   Zap,
   LayoutTemplate,
   FileCode,
-  ArrowLeft
+  ArrowLeft,
+  Bot,
+  Settings,
+  Rocket,
+  ScrollText,
+  Brain
 } from 'lucide-react';
 import { EmptyState } from '@/components/common/EmptyState';
 import { LoadingState } from '@/components/common/LoadingState';
@@ -24,18 +29,22 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 const docCategories = [
-  { id: 'overview', title: 'Overview', description: 'Vision, roadmap, and project requirements.', icon: BookOpen },
+  { id: 'overview', title: 'Overview', description: 'Vision, roadmap, and product requirements.', icon: BookOpen },
+  { id: 'agent', title: 'Agent Guide', description: 'How VibeForge works, agent workflow, memory bank, skills, and MCP setup.', icon: Brain },
   { id: 'architecture', title: 'Architecture', description: 'System design, tech stack, and structure.', icon: Layers },
-  { id: 'standards', title: 'Standards', description: 'Coding conventions, DoR, and DoD.', icon: Ruler },
-  { id: 'ui-ux', title: 'UI/UX', description: 'Design guidelines and component library.', icon: Palette },
-  { id: 'database', title: 'Database', description: 'NocoDB schema and setup.', icon: Database },
+  { id: 'skills', title: 'Skills', description: 'Specialized agent skill instructions and triggers.', icon: Zap },
+  { id: 'ai', title: 'AI & MCP', description: 'AI provider rules, project context, and MCP integration.', icon: Bot },
   { id: 'workflow', title: 'Workflow', description: 'Development lifecycle and AI operating loops.', icon: Workflow },
+  { id: 'standards', title: 'Standards', description: 'Coding conventions, DoR, and DoD.', icon: Ruler },
+  { id: 'database', title: 'Database', description: 'NocoDB schema and setup guide.', icon: Database },
+  { id: 'ui-ux', title: 'UI/UX', description: 'Design guidelines and component patterns.', icon: Palette },
   { id: 'checklists', title: 'Checklists', description: 'Process checklists for agents and devs.', icon: CheckSquare },
-  { id: 'skills', title: 'Skills', description: 'Specialized agent instructions.', icon: Zap },
-  { id: 'templates', title: 'Templates', description: 'Templates for tasks, plans, logs.', icon: LayoutTemplate },
+  { id: 'templates', title: 'Templates', description: 'Templates for tasks, plans, logs, and ADRs.', icon: LayoutTemplate },
   { id: 'adr', title: 'ADR', description: 'Architecture Decision Records.', icon: FileCode },
-  { id: 'ai', title: 'AI & MCP', description: 'AI provider rules and MCP integration.', icon: Zap },
-  { id: 'prompts', title: 'Prompts', description: 'System prompts for context.', icon: FileCode },
+  { id: 'prompts', title: 'Prompts', description: 'System prompts for session context.', icon: ScrollText },
+  { id: 'setup', title: 'Setup', description: 'Installation, package setup, and project initialization.', icon: Settings },
+  { id: 'deployment', title: 'Deployment', description: 'Docker, Traefik, and production deployment.', icon: Rocket },
+  { id: 'logging', title: 'Logging', description: 'Logging policy and best practices.', icon: ScrollText },
 ];
 
 export default function DocsPage() {

@@ -262,10 +262,33 @@ When you need to use a tool, output the <tool_use> block. The system will execut
         try {
           const chatMessages: Array<{ role: string; content: string }> = [
             { role: 'system', content: SYSTEM_PROMPT },
-            ...messages.map((m: { role: string; content: string }) => ({
-              role: m.role === 'assistant' ? 'assistant' : 'user',
-              content: m.content,
-            })).filter((m: { role: string; content: string }) => m.content.trim()),
+            ...messages.map((m: any) => {
+              let textContent = m.content || '';
+              
+              // If there are steps, reconstruct the XML representation of thoughts and tools
+              // so the LLM remembers its actions across refreshes/subsequent turns.
+              if (m.steps && m.steps.length > 0) {
+                const stepParts: string[] = [];
+                m.steps.forEach((step: any) => {
+                  if (step.type === 'thought' && step.text) {
+                    stepParts.push(step.text);
+                  } else if (step.type === 'tool_call') {
+                    stepParts.push(`<tool_use><name>${step.toolName}</name><args>${JSON.stringify(step.toolArgs || {})}</args></tool_use>`);
+                    if (step.toolOutput) {
+                      stepParts.push(`<tool_result><name>${step.toolName}</name><result>${step.toolOutput}</result></tool_result>`);
+                    }
+                  }
+                });
+                if (stepParts.length > 0) {
+                  textContent = stepParts.join('\n\n') + (textContent ? `\n\n${textContent}` : '');
+                }
+              }
+
+              return {
+                role: m.role === 'assistant' ? 'assistant' : 'user',
+                content: textContent,
+              };
+            }).filter((m: { role: string; content: string }) => m.content.trim()),
           ];
 
           const MAX_ITERATIONS = 8;
@@ -328,6 +351,11 @@ When you need to use a tool, output the <tool_use> block. The system will execut
             // Read the full streamed response
             const streamRes = await readStream(llmRes.body);
             const responseText = streamRes.fullText;
+            
+            if (!responseText.trim()) {
+              emit('content', { delta: `\n\n_AI returned an empty response. The provider may not support streaming, or the model did not generate any content. Try sending the message again._` });
+              break;
+            }
             
             if (streamRes.usage) {
               totalInputTokens += streamRes.usage.prompt_tokens || 0;

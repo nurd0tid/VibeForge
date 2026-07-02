@@ -1217,8 +1217,21 @@ export default function WorkspacePage() {
   useEffect(() => {
     if (effectiveProvider) {
       const ctxWindow = Number(getField(effectiveProvider as unknown as Record<string, unknown>, 'context_window', 'Context Window') || 128000);
-      const charCount = aiMessages.reduce((sum, m) => sum + (m.content?.length || 0), 0);
-      const estTokens = Math.round(charCount / 4);
+      
+      // Better token estimation: include system prompt baseline (~500 tokens) + full stringified steps/content
+      const systemPromptEst = 500;
+      let totalChars = 0;
+      aiMessages.forEach((m) => {
+        totalChars += m.content?.length || 0;
+        if (m.steps) {
+          m.steps.forEach((s) => {
+            totalChars += s.text?.length || 0;
+            totalChars += s.toolOutput?.length || 0;
+            totalChars += JSON.stringify(s.toolArgs || {}).length;
+          });
+        }
+      });
+      const estTokens = systemPromptEst + Math.round(totalChars / 4);
       setContextUsage(estTokens, ctxWindow);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps

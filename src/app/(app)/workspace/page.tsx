@@ -877,11 +877,10 @@ function ToolCallStep({ step }: { step: AgentStep }) {
     return (
       <div className="text-[9px] font-mono">
         <div className="flex items-center gap-1.5 py-0.5">
-          {isRunning ? <Loader2 className="size-2.5 animate-spin text-[#007acc] shrink-0" /> : <FileText className="size-2.5 text-[#888] shrink-0" />}
-          <FileCode className="size-2.5 text-[#519aba] shrink-0" />
+          {isRunning ? <Loader2 className="size-2.5 animate-spin text-[#007acc] shrink-0" /> : <FileCode className="size-2.5 text-[#519aba] shrink-0" />}
           <span className={`truncate max-w-[200px] ${isRunning ? 'vibeforge-wave-text' : 'text-[#cccccc]'}`}>{filePath}</span>
           {isFinished && lineCount > 0 && (
-            <span className="text-[#555] ml-1">lines 1–{lineCount}</span>
+            <span className="text-[#555] ml-1 shrink-0">lines 1–{lineCount}</span>
           )}
           {isFinished && step.toolOutput && (
             <button onClick={() => setExpanded(!expanded)} className="ml-auto text-[#555] hover:text-[#888]">
@@ -905,8 +904,7 @@ function ToolCallStep({ step }: { step: AgentStep }) {
     return (
       <div className="text-[9px] font-mono">
         <div className="flex items-center gap-1.5 py-0.5">
-          {isRunning ? <Loader2 className="size-2.5 animate-spin text-[#007acc] shrink-0" /> : <FolderSearch className="size-2.5 text-[#888] shrink-0" />}
-          <FolderOpen className="size-2.5 text-[#dcb67a] shrink-0" />
+          {isRunning ? <Loader2 className="size-2.5 animate-spin text-[#007acc] shrink-0" /> : <FolderOpen className="size-2.5 text-[#dcb67a] shrink-0" />}
           <span className={`truncate max-w-[200px] ${isRunning ? 'vibeforge-wave-text' : 'text-[#cccccc]'}`}>{filePath}</span>
           {isFinished && preview.length > 0 && (
             <button onClick={() => setExpanded(!expanded)} className="ml-auto text-[#555] hover:text-[#888]">
@@ -987,7 +985,7 @@ function ToolCallStep({ step }: { step: AgentStep }) {
   );
 }
 
-function AiMessageBubble({ role, content, steps, model, provider }: { role: string; content: string; steps?: AgentStep[]; model?: string; provider?: string }) {
+function AiMessageBubble({ role, content, steps, model, provider, isLast }: { role: string; content: string; steps?: AgentStep[]; model?: string; provider?: string; isLast?: boolean }) {
   const isUser = role === 'user';
   const isSystem = role === 'system';
 
@@ -1018,7 +1016,7 @@ function AiMessageBubble({ role, content, steps, model, provider }: { role: stri
 
   return (
     <div className="flex justify-start">
-      <div className="max-w-[90%] rounded-lg text-xs leading-relaxed bg-[#2d2d2d] text-[#cccccc] border border-[#3a3a3a]">
+      <div className="max-w-[90%] rounded-lg text-xs leading-relaxed bg-[#2d2d2d] text-[#cccccc] border border-[#3a3a3a] overflow-hidden break-words">
         <div className="flex items-center gap-1.5 px-3 pt-2 pb-1 border-b border-[#3a3a3a]">
           <Bot className="size-3.5 text-[#4ec9b0]" />
           <span className="font-semibold text-[10px] uppercase tracking-wide text-[#4ec9b0]">VibeForge AI</span>
@@ -1096,8 +1094,16 @@ function AiMessageBubble({ role, content, steps, model, provider }: { role: stri
         })()}
 
         {content && (
-          <div className="px-3 py-2 prose prose-invert prose-ide max-w-none text-[#cccccc] [&_code]:text-[#ce9178] [&_pre]:bg-[#1e1e1e] [&_pre]:border [&_pre]:border-[#3a3a3a] [&_h1]:text-[#4ec9b0] [&_h2]:text-[#4ec9b0] [&_h3]:text-[#4ec9b0] [&_blockquote]:border-[#3a3a3a]">
+          <div className="px-3 py-2 prose prose-invert prose-ide max-w-none text-[#cccccc] [&_code]:text-[#ce9178] [&_pre]:bg-[#1e1e1e] [&_pre]:border [&_pre]:border-[#3a3a3a] [&_h1]:text-[#4ec9b0] [&_h2]:text-[#4ec9b0] [&_h3]:text-[#4ec9b0] [&_blockquote]:border-[#3a3a3a] overflow-x-hidden word-break-all">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+          </div>
+        )}
+
+        {/* Thinking indicator — shown inside bubble when running with no content yet */}
+        {isLast && !content && (!steps || steps.length === 0) && (
+          <div className="px-3 py-2 flex items-center gap-2">
+            <Loader2 className="size-3 animate-spin text-[#4ec9b0] shrink-0" />
+            <span className="text-[9px] vibeforge-wave-text">Thinking...</span>
           </div>
         )}
       </div>
@@ -2699,14 +2705,8 @@ export default function WorkspacePage() {
             {/* Messages */}
             <div ref={aiScrollContainerRef} className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0">
               {aiMessages.map((msg, i) => (
-                <AiMessageBubble key={i} role={msg.role} content={msg.content} steps={msg.steps} model={msg.model} provider={msg.provider} />
+                <AiMessageBubble key={i} role={msg.role} content={msg.content} steps={msg.steps} model={msg.model} provider={msg.provider} isLast={i === aiMessages.length - 1 && isAgentRunning} />
               ))}
-              {isAgentRunning && (
-                <div className="flex items-center gap-2 text-xs text-[#888]">
-                  <Loader2 className="size-3 animate-spin text-[#4ec9b0]" />
-                  <span className="text-[10px] vibeforge-wave-text">{agentStatusText}</span>
-                </div>
-              )}
               <div ref={aiEndRef} />
             </div>
 

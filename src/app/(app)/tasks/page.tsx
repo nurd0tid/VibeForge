@@ -44,6 +44,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { useWorkspaceStore } from '@/stores/workspace.store';
+import { getField } from '@/lib/nocodb-fields';
 
 const COLUMNS: { id: TaskStatus; label: string }[] = [
   { id: 'backlog', label: 'Backlog' },
@@ -665,7 +666,7 @@ Generate the tasks now:`
                     <SelectContent>
                       {allProviders.map((p: any) => (
                         <SelectItem key={p.Id} value={p.Id.toString()} className="text-xs">
-                          {p.name || p['Name']}
+                          {getField(p, 'name', 'Name') || getField(p, 'display_name', 'Display Name') || p.Id?.toString()}
                         </SelectItem>
                       ))}
                     </SelectContent>

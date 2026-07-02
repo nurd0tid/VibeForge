@@ -365,8 +365,8 @@ function GitSourceControl({ projectPath, defaultBranch }: { projectPath: string;
 function WorkspaceTerminal({ cwd: initialCwd }: { cwd: string }) {
   const [cwd, setCwd] = useState(initialCwd);
   const [output, setOutput] = useState<{ type: 'command' | 'stdout' | 'stderr' | 'info'; text: string }[]>([
-    { type: 'info', text: `VibeForge Terminal — ${initialCwd}` },
-    { type: 'info', text: 'Type a command and press Enter. Long-running commands (yarn dev, npm start) are supported.' },
+    { type: 'info', text: `VibeForge Terminal` },
+    { type: 'info', text: 'Type a command and press Enter. Long-running commands supported.' },
   ]);
   const [input, setInput] = useState('');
   const [isRunning, setIsRunning] = useState(false);
@@ -380,6 +380,14 @@ function WorkspaceTerminal({ cwd: initialCwd }: { cwd: string }) {
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: 'auto' });
   }, [output]);
+
+  useEffect(() => {
+    if (initialCwd && initialCwd !== cwd) {
+      setCwd(initialCwd);
+      setOutput(prev => [...prev, { type: 'info', text: `cwd: ${initialCwd}` }]);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialCwd]);
 
   const appendOutput = (type: 'command' | 'stdout' | 'stderr' | 'info', text: string) => {
     setOutput(prev => [...prev, { type, text }]);
@@ -1937,6 +1945,13 @@ export default function WorkspacePage() {
         updateLastAiMessage('An error occurred while communicating with the AI.');
       }
     } finally {
+      // Estimate context from messages if provider didn't return usage
+      const msgs = useWorkspaceStore.getState().aiMessages;
+      const totalChars = msgs.reduce((sum, m) => sum + (m.content?.length || 0) + (m.steps?.reduce((s, st) => s + (st.text?.length || 0) + (st.toolOutput?.length || 0), 0) || 0), 0);
+      const estTokens = Math.round(totalChars / 3.5);
+      if (estTokens > useWorkspaceStore.getState().contextUsedTokens) {
+        setContextUsage(estTokens, contextLimit);
+      }
       setAgentRunning(false);
       globalAiAbortController = null;
       abortControllerRef.current = null;
@@ -2243,6 +2258,13 @@ export default function WorkspacePage() {
         updateLastAiMessage('An error occurred while communicating with the AI.');
       }
     } finally {
+      // Estimate context from messages if provider didn't return usage
+      const msgs = useWorkspaceStore.getState().aiMessages;
+      const totalChars = msgs.reduce((sum, m) => sum + (m.content?.length || 0) + (m.steps?.reduce((s, st) => s + (st.text?.length || 0) + (st.toolOutput?.length || 0), 0) || 0), 0);
+      const estTokens = Math.round(totalChars / 3.5);
+      if (estTokens > useWorkspaceStore.getState().contextUsedTokens) {
+        setContextUsage(estTokens, contextLimit);
+      }
       setAgentRunning(false);
       globalAiAbortController = null;
       abortControllerRef.current = null;

@@ -162,6 +162,17 @@ Open [http://localhost:3456](http://localhost:3456).
 4. Set Context Window and Max Output Tokens (-1 = unlimited / provider default).
 5. Click **Test Connection** to verify.
 
+## Performance Optimization
+
+For the fastest and most lightweight workspace experience (especially when switching pages or streaming large outputs), run the production build instead of the development server:
+
+```bash
+pnpm build
+pnpm start
+```
+
+Using the production build drastically reduces memory usage, eliminates hot-reloads, and provides a near-instant IDE response.
+
 ## Documentation
 
 All documentation is browsable in the **Docs** page inside the app. Categories include: Agent Guide, Architecture, Skills, AI & MCP, Workflow, Standards, Database, UI/UX, Checklists, Templates, ADR, Prompts, Setup, Deployment, and Logging.

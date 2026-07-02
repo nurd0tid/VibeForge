@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
           : ['-c', command];
 
         const child = spawn(shell, args, {
-          cwd: cwd || process.cwd(),
+          cwd: cwd && cwd.trim() ? cwd.trim() : undefined,
           env: {
             ...process.env,
             FORCE_COLOR: '0',  // Disable color output

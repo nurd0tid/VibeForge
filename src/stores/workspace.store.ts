@@ -380,7 +380,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         aiMessages: state.aiMessages,
         approvalMode: state.approvalMode,
         contextLimit: state.contextLimit,
+        contextUsedTokens: state.contextUsedTokens,
         isAutoCompactEnabled: state.isAutoCompactEnabled,
+        isAiPanelOpen: state.isAiPanelOpen,
         expandedFolders: state.expandedFolders,
       }),
     }

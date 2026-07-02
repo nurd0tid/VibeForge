@@ -34,36 +34,74 @@ Open-source AI Coding Workspace — VS Code + Linear + AI Agent in one.
 
 ### NocoDB Setup (Required)
 
-VibeForge uses NocoDB as the database backend. You must set up NocoDB before running VibeForge.
+VibeForge uses NocoDB as the database backend. You have **two options** to set it up:
+
+---
+
+#### Option A: NocoDB Cloud (Easiest)
+
+Use NocoDB's free hosted cloud — no Docker or server needed.
+
+1. Go to **https://app.nocodb.com/** and **Sign Up** or **Log In**
+2. Create a new **Base** (database)
+3. Create the required tables (see below)
+4. Get your API token from: **Team & Settings → Tokens → Add Token**
+5. Your Base URL is `https://app.nocodb.com`
+6. Get your `Workspace ID` and `Base ID` from the URL:
+   ```
+   https://app.nocodb.com/#/nc/{WORKSPACE_ID}/{BASE_ID}
+   ```
+7. Fill your `.env.local`:
+   ```env
+   NOCODB_BASE_URL=https://app.nocodb.com
+   NOCODB_WORKSPACE_ID=your_workspace_id
+   NOCODB_BASE_ID=your_base_id
+   NOCODB_API_TOKEN=your_api_token
+   ```
+
+---
+
+#### Option B: Self-Hosted via Docker
+
+Run NocoDB locally on your machine.
 
 1. **Run NocoDB** via Docker:
    ```bash
-   docker run -d -p 8080:8080 nocodb/nocodb:latest
+   docker run -d --name nocodb -p 8080:8080 nocodb/nocodb:latest
    ```
-   Or visit the official setup guide: **https://docs.nocodb.com/getting-started/self-hosted/installation/**
+   Or see the full guide: **https://docs.nocodb.com/getting-started/self-hosted/installation/**
 
-2. **Open NocoDB UI** at [http://localhost:8080](http://localhost:8080)
-
-3. **Create a workspace and a base** (database)
-
-4. **Create the required tables** with these names (exact):
-   - `projects`, `tasks`, `schedules`, `daily_logs`, `weekly_logs`
-   - `agent_runs`, `providers`, `plans`
-
-5. **Get your API token** from: Profile → Team & Auth → API Tokens
-
-6. **Get your IDs** from the URL when inside a base:
+2. **Open NocoDB UI** at [http://localhost:8080](http://localhost:8080), create an account
+3. Create a new **Workspace** and a new **Base** (database)
+4. Get your API token from: **Team & Settings → Tokens → Add Token**
+5. Get your IDs from the URL:
    ```
    http://localhost:8080/#/nc/{WORKSPACE_ID}/{BASE_ID}
    ```
-
-7. Fill your `.env.local` with:
+6. Fill your `.env.local`:
    ```env
    NOCODB_BASE_URL=http://localhost:8080
    NOCODB_WORKSPACE_ID=your_workspace_id
    NOCODB_BASE_ID=your_base_id
    NOCODB_API_TOKEN=your_api_token
    ```
+
+---
+
+#### Required Tables
+
+After setting up NocoDB (cloud or Docker), create these tables with **exact names**:
+
+| Table Name | Purpose |
+|-----------|---------|
+| `projects` | Project records |
+| `tasks` | Task/Kanban items |
+| `schedules` | Scheduled work items |
+| `daily_logs` | Daily progress logs |
+| `weekly_logs` | Weekly summaries |
+| `agent_runs` | AI agent execution history |
+| `providers` | AI provider configurations |
+| `plans` | Task plans |
 
 > **Note:** VibeForge runs on port **3456** by default to avoid conflicting with your user projects which typically run on port 3000.
 

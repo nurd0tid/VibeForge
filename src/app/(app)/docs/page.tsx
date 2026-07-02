@@ -146,14 +146,14 @@ export default function DocsPage() {
             </div>
 
             {/* Content area */}
-            <div className="flex-1 flex flex-col min-w-0 bg-background">
+            <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-background overflow-hidden">
               {activeFile ? (
                 <>
                   <div className="px-6 py-4 border-b border-border bg-card shrink-0">
                     <h2 className="text-lg font-semibold capitalize">{activeFile.name}</h2>
                     <p className="text-xs text-muted-foreground font-mono mt-1">{activeFile.path}</p>
                   </div>
-                  <ScrollArea className="flex-1 bg-muted/30">
+                  <div className="flex-1 min-h-0 overflow-y-auto bg-muted/30">
                     <div className="p-8 max-w-4xl mx-auto">
                       <div className="prose prose-sm dark:prose-invert max-w-none bg-white dark:bg-zinc-900 text-black dark:text-zinc-100 p-8 rounded-lg shadow-sm border">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -161,7 +161,7 @@ export default function DocsPage() {
                         </ReactMarkdown>
                       </div>
                     </div>
-                  </ScrollArea>
+                  </div>
                 </>
               ) : (
                 <div className="h-full flex items-center justify-center p-8">

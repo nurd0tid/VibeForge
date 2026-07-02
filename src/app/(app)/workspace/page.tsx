@@ -681,6 +681,7 @@ function ToolCallStep({ step }: { step: AgentStep }) {
   const endRef = useRef<HTMLDivElement>(null);
   const isFinished = !!step.toolOutput;
   const isEditFile = step.toolName === 'edit_file';
+  const isWriteFile = step.toolName === 'write_file';
   const isOpen = !isFinished || !userCollapsed;
   const { approvalMode } = useWorkspaceStore();
 
@@ -692,6 +693,8 @@ function ToolCallStep({ step }: { step: AgentStep }) {
 
   const toolLabel = isEditFile
     ? 'Editing file'
+    : isWriteFile
+    ? 'Creating file'
     : step.toolName === 'read_file'
     ? 'Reading file'
     : step.toolName === 'list_directory'
@@ -761,7 +764,7 @@ function ToolCallStep({ step }: { step: AgentStep }) {
       </button>
       {isOpen && (
         <div className="max-h-64 overflow-y-auto bg-[#1e1e1e] flex flex-col">
-          {isEditFile && step.toolArgs?.old_string !== undefined ? (
+          {(isEditFile && step.toolArgs?.old_string !== undefined) ? (
             <div className="p-2 flex flex-col gap-2">
               <div className="flex justify-end">
                 <button
@@ -815,6 +818,14 @@ function ToolCallStep({ step }: { step: AgentStep }) {
                   </span>
                 </div>
               )}
+            </div>
+          ) : isWriteFile && step.toolArgs?.content ? (
+            <div className="p-2">
+              <div className="text-[9px] text-[#888] font-mono mb-1">New file — {String(step.toolArgs.path || '')}</div>
+              <InlineDiffViewer
+                oldStr=""
+                newStr={String(step.toolArgs.content || '')}
+              />
             </div>
           ) : (
             <div className="p-2 text-[10px] font-mono text-[#888] whitespace-pre-wrap">
@@ -991,7 +1002,7 @@ function InterruptedTaskBanner({
       <p className="text-[#888] leading-relaxed">
         The agent connection was interrupted. The last prompt was:
         <br />
-        <span className="text-[#cccccc] italic line-clamp-1 mt-1">"{lastMessage}"</span>
+        <span className="text-[#cccccc] italic line-clamp-1 mt-1">&quot;{lastMessage}&quot;</span>
       </p>
       <div className="mt-1 flex gap-2">
         <button onClick={onResume} className="bg-[#c74e39] text-white px-2 py-1 rounded text-[10px] hover:bg-[#a63a28] transition-colors">
@@ -1365,6 +1376,15 @@ export default function WorkspacePage() {
                 if (targetStep) {
                   targetStep.toolOutput = data.output;
                   targetStep.isError = data.isError;
+                  if (!data.isError && targetStep.toolArgs?.path) {
+                    const toolName = targetStep.toolName || '';
+                    if (toolName === 'edit_file' || toolName === 'write_file' || toolName === 'read_file') {
+                      const fp = String(targetStep.toolArgs.path);
+                      const fn = fp.split(/[/\\]/).pop() || 'file';
+                      handleFileClick(fp, fn);
+                      if (toolName === 'write_file') refetchTree();
+                    }
+                  }
                 }
               } else if (eventType === 'content') {
                 fullContent += data.delta || '';
@@ -1581,9 +1601,14 @@ export default function WorkspacePage() {
                 if (targetStep) {
                   targetStep.toolOutput = data.output;
                   targetStep.isError = data.isError;
-                  // Optionally trigger handleFileClick if it was a file read/edit
-                  if (!data.isError && (data.name === 'read_file' || data.name === 'edit_file')) {
-                    // we could theoretically do handleFileClick(data.args.path, data.args.path.split('/').pop()) but we don't have the args here unless we stored them
+                  if (!data.isError && targetStep.toolArgs?.path) {
+                    const toolName = targetStep.toolName || '';
+                    if (toolName === 'edit_file' || toolName === 'write_file' || toolName === 'read_file') {
+                      const fp = String(targetStep.toolArgs.path);
+                      const fn = fp.split(/[/\\]/).pop() || 'file';
+                      handleFileClick(fp, fn);
+                      if (toolName === 'write_file') refetchTree();
+                    }
                   }
                 }
               } else if (eventType === 'content') {

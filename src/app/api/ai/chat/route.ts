@@ -36,6 +36,15 @@ async function executeTool(name: string, args: Record<string, string>, projectRo
         return `Successfully edited ${args.path}`;
       } catch (e: unknown) { return `Error: ${e instanceof Error ? e.message : String(e)}`; }
     }
+    case 'write_file': {
+      try {
+        const filePath = resolve(args.path);
+        const dir = path.dirname(filePath);
+        await fs.mkdir(dir, { recursive: true });
+        await fs.writeFile(filePath, args.content, 'utf-8');
+        return `Successfully created ${args.path}`;
+      } catch (e: unknown) { return `Error: ${e instanceof Error ? e.message : String(e)}`; }
+    }
     case 'run_command': {
       try {
         const { stdout, stderr } = await execAsync(args.command, { cwd: projectRoot, timeout: 15000 });
@@ -202,16 +211,19 @@ TOOLS AVAILABLE (use these to interact with the project):
 3. edit_file — Edit a file (search & replace)
    Format: <tool_use><name>edit_file</name><args>{"path": "file.ts", "old_string": "old", "new_string": "new"}</args></tool_use>
 
-4. run_command — Run a shell command
+4. write_file — Create a new file from scratch
+   Format: <tool_use><name>write_file</name><args>{"path": "new-file.md", "content": "# Title\nNew content here"}</args></tool_use>
+
+5. run_command — Run a shell command
    Format: <tool_use><name>run_command</name><args>{"command": "pnpm build"}</args></tool_use>
 
-5. memory_list — List all files in the project memory bank (.vibeforge/memory-bank/)
+6. memory_list — List all files in the project memory bank (.vibeforge/memory-bank/)
    Format: <tool_use><name>memory_list</name><args>{}</args></tool_use>
 
-6. memory_read — Read a specific memory bank file
+7. memory_read — Read a specific memory bank file
    Format: <tool_use><name>memory_read</name><args>{"file": "activeContext.md"}</args></tool_use>
 
-7. memory_write — Write or update a memory bank file
+8. memory_write — Write or update a memory bank file
    Format: <tool_use><name>memory_write</name><args>{"file": "activeContext.md", "content": "## Current Focus\n..."}</args></tool_use>
 
 RULES:

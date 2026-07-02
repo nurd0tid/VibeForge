@@ -353,7 +353,18 @@ When you need to use a tool, output the <tool_use> block. The system will execut
             const responseText = streamRes.fullText;
             
             if (!responseText.trim()) {
-              emit('content', { delta: `\n\n_AI returned an empty response. The provider may not support streaming, or the model did not generate any content. Try sending the message again._` });
+              // Empty response from LLM — could be context too long, provider throttling, or bad format
+              // Add a status update and try one more time with shorter context
+              if (chatMessages.length > 10) {
+                // Trim old tool results to reduce context size, keep first 3 and last 5 messages
+                const systemMsg = chatMessages[0];
+                const trimmed = [...chatMessages.slice(0, 4), ...chatMessages.slice(-3)];
+                chatMessages.length = 0;
+                chatMessages.push(systemMsg, ...trimmed.slice(1));
+                emit('thought', { text: 'Context too long, trimming and retrying...' });
+                continue; // retry the loop with smaller context
+              }
+              emit('content', { delta: `\n\n_The AI returned no response. The context may be too long for this model. Try using /compact to reduce context._` });
               break;
             }
             

@@ -718,20 +718,13 @@ function InlineDiffViewer({ oldStr, newStr }: { oldStr: string; newStr: string }
 }
 
 function ToolCallStep({ step }: { step: AgentStep }) {
-  const [userCollapsed, setUserCollapsed] = useState(true);
+  const [showOutput, setShowOutput] = useState(false);
   const [editStatus, setEditStatus] = useState<'applied' | 'rejected' | null>(null);
-  const endRef = useRef<HTMLDivElement>(null);
   const isFinished = !!step.toolOutput;
   const isEditFile = step.toolName === 'edit_file';
   const isWriteFile = step.toolName === 'write_file';
-  const isOpen = !isFinished || !userCollapsed;
+  const isReadLike = step.toolName === 'read_file' || step.toolName === 'list_directory' || step.toolName === 'memory_read' || step.toolName === 'memory_list';
   const { approvalMode, setPendingDiff, clearPendingDiff } = useWorkspaceStore();
-
-  useEffect(() => {
-    if (isOpen && endRef.current) {
-      endRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-  }, [step.toolOutput, isOpen]);
 
   useEffect(() => {
     if (isFinished && isEditFile && !step.isError && editStatus === null) {
@@ -739,10 +732,6 @@ function ToolCallStep({ step }: { step: AgentStep }) {
       const oldStr = String(step.toolArgs?.old_string || '');
       const newStr = String(step.toolArgs?.new_string || '');
       if (path && oldStr) {
-        // Here we simulate the original content by using the currently loaded active file content,
-        // replacing the newStr back with oldStr to get the full original string.
-        // For a more robust approach we'd fetch the exact file state, but this works well enough
-        // for live-preview in the main editor.
         const currentContent = useWorkspaceStore.getState().openFiles.find(f => f.path === path)?.content || '';
         if (currentContent.includes(newStr)) {
           const original = currentContent.replace(newStr, oldStr);
@@ -755,60 +744,101 @@ function ToolCallStep({ step }: { step: AgentStep }) {
 
   const handleAcceptEdit = () => {
     setEditStatus('applied');
-    if (step.toolArgs?.path) {
-      clearPendingDiff(String(step.toolArgs.path));
-    }
+    if (step.toolArgs?.path) clearPendingDiff(String(step.toolArgs.path));
   };
 
   const handleRejectEdit = async () => {
     if (!step.toolArgs?.path || !step.toolArgs?.old_string || !step.toolArgs?.new_string) return;
     try {
       const readRes = await fetch(`/api/workspace/file?path=${encodeURIComponent(String(step.toolArgs.path))}`);
-      if (!readRes.ok) throw new Error('Failed to read file');
+      if (!readRes.ok) throw new Error('Failed');
       const { content } = await readRes.json();
       const reverted = content.replace(String(step.toolArgs.new_string), String(step.toolArgs.old_string));
-      await fetch('/api/workspace/file', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: String(step.toolArgs.path), content: reverted }),
-      });
+      await fetch('/api/workspace/file', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: String(step.toolArgs.path), content: reverted }) });
       setEditStatus('rejected');
       clearPendingDiff(String(step.toolArgs.path));
-      // update the store open file content as well
       useWorkspaceStore.getState().updateFileContent(String(step.toolArgs.path), reverted);
-      toast.info(`Reverted changes to ${String(step.toolArgs.path)}`);
-    } catch {
-      toast.error('Failed to revert changes');
-    }
+      toast.info(`Reverted ${String(step.toolArgs.path)}`);
+    } catch { toast.error('Failed to revert'); }
   };
 
-  const [showSideBySide, setShowSideBySide] = useState(false);
+  const filePath = String(step.toolArgs?.path || step.toolArgs?.file || '');
+  const fileName = filePath.split(/[/\\]/).pop() || '';
+  const command = String(step.toolArgs?.command || '');
 
-  const toolLabel = isEditFile
-    ? 'AI Assistant wants to edit this file:'
-    : isWriteFile
-    ? 'AI Assistant wants to create this file:'
-    : step.toolName === 'read_file'
-    ? 'Read file:'
-    : step.toolName === 'list_directory'
-    ? 'Visited folder:'
-    : step.toolName === 'run_command'
-    ? 'Ran command:'
-    : step.toolName === 'memory_list'
-    ? 'Indexed memory bank'
-    : step.toolName === 'memory_read'
-    ? 'Read memory file:'
-    : step.toolName === 'memory_write'
-    ? 'Updated memory file:'
-    : step.toolName;
+  // ── READ / LIST / MEMORY: simple one-liner with expand ──
+  if (isReadLike) {
+    const label = step.toolName === 'read_file' ? 'read file' : step.toolName === 'list_directory' ? 'visited folder' : step.toolName === 'memory_read' ? 'read memory' : 'indexed memory';
+    return (
+      <div className="text-[10px] text-[#888] font-mono">
+        {!isFinished ? (
+          <div className="flex items-center gap-1.5 py-0.5">
+            <Loader2 className="size-2.5 animate-spin text-[#007acc]" />
+            <span className="vibeforge-wave-text">{label}...</span>
+          </div>
+        ) : (
+          <div>
+            <div className="flex items-center gap-1.5 py-0.5">
+              {step.isError ? <XCircle className="size-2.5 text-[#c74e39]" /> : <FileCode className="size-2.5 text-[#519aba]" />}
+              <span className="text-[#666]">{label}</span>
+              <span className="text-[#cccccc] truncate max-w-[200px]">{filePath}</span>
+              {step.toolOutput && (
+                <button onClick={() => setShowOutput(!showOutput)} className="ml-auto text-[#555] hover:text-[#cccccc] transition-colors">
+                  <ChevronRight className={`size-2.5 transition-transform ${showOutput ? 'rotate-90' : ''}`} />
+                </button>
+              )}
+            </div>
+            {showOutput && step.toolOutput && (
+              <div className="ml-4 mt-1 mb-1 text-[9px] text-[#666] bg-[#1a1a1a] rounded p-2 border border-[#333] max-h-32 overflow-y-auto whitespace-pre-wrap">
+                {step.toolOutput}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
 
+  // ── COMMAND: show command and output ──
+  if (step.toolName === 'run_command' || step.toolName === 'memory_write') {
+    const label = step.toolName === 'run_command' ? 'ran command' : 'updated memory';
+    return (
+      <div className="text-[10px] text-[#888] font-mono">
+        {!isFinished ? (
+          <div className="flex items-center gap-1.5 py-0.5">
+            <Loader2 className="size-2.5 animate-spin text-[#007acc]" />
+            <span className="vibeforge-wave-text">{label}...</span>
+            {command && <span className="text-[#4ec9b0]">$ {command}</span>}
+          </div>
+        ) : (
+          <div>
+            <div className="flex items-center gap-1.5 py-0.5">
+              {step.isError ? <XCircle className="size-2.5 text-[#c74e39]" /> : <Terminal className="size-2.5 text-[#4ec9b0]" />}
+              <span className="text-[#666]">{label}</span>
+              {command && <span className="text-[#cccccc] truncate max-w-[200px]">$ {command}</span>}
+              {filePath && <span className="text-[#cccccc] truncate max-w-[200px]">{filePath}</span>}
+              {step.toolOutput && (
+                <button onClick={() => setShowOutput(!showOutput)} className="ml-auto text-[#555] hover:text-[#cccccc] transition-colors">
+                  <ChevronRight className={`size-2.5 transition-transform ${showOutput ? 'rotate-90' : ''}`} />
+                </button>
+              )}
+            </div>
+            {showOutput && step.toolOutput && (
+              <div className="ml-4 mt-1 mb-1 text-[9px] text-[#666] bg-[#1a1a1a] rounded p-2 border border-[#333] max-h-32 overflow-y-auto whitespace-pre-wrap">
+                {step.toolOutput}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── EDIT / WRITE FILE: prominent card with diff + accept/reject ──
   return (
-    <div className="border border-[#3a3a3a] rounded bg-[#252526] overflow-hidden">
-      <button
-        onClick={() => { if (isFinished) setUserCollapsed(!userCollapsed); }}
-        className={`flex items-center gap-2 px-2.5 py-1.5 w-full text-left text-[10px] bg-[#2d2d2d] hover:bg-[#333] transition-colors ${!isFinished ? 'cursor-default' : 'cursor-pointer'}`}
-      >
-        {!step.toolOutput ? (
+    <div className="border border-[#3a3a3a] rounded bg-[#1e1e1e] overflow-hidden">
+      <div className="flex items-center gap-2 px-2.5 py-2 bg-[#252526]">
+        {!isFinished ? (
           <Loader2 className="size-3 animate-spin text-[#007acc]" />
         ) : editStatus === 'rejected' ? (
           <XCircle className="size-3 text-[#e2c08d]" />
@@ -817,94 +847,22 @@ function ToolCallStep({ step }: { step: AgentStep }) {
         ) : (
           <CheckCircle2 className="size-3 text-[#4ec9b0]" />
         )}
-        <span className="text-[#4ec9b0] font-mono">{toolLabel}</span>
-        {!!(step.toolArgs?.path) && (
-          <span className="text-[#888] truncate max-w-[160px] font-mono">{String(step.toolArgs.path)}</span>
-        )}
-        {!!(step.toolArgs?.file) && (
-          <span className="text-[#888] truncate max-w-[160px] font-mono">{String(step.toolArgs.file)}</span>
-        )}
-        {!!(step.toolArgs?.command) && (
-          <span className="text-[#888] truncate max-w-[160px] font-mono">$ {String(step.toolArgs.command)}</span>
-        )}
+        <span className="text-[10px] text-[#cccccc]">
+          {isEditFile ? 'AI wants to edit:' : 'AI wants to create:'}
+        </span>
+        <span className="text-[10px] text-[#4ec9b0] font-mono truncate flex-1">{fileName}</span>
         {editStatus && (
-          <span className={`text-[9px] px-1 rounded ml-1 ${editStatus === 'rejected' ? 'bg-[#e2c08d]/20 text-[#e2c08d]' : 'bg-[#4ec9b0]/20 text-[#4ec9b0]'}`}>
+          <span className={`text-[9px] px-1.5 py-0.5 rounded ${editStatus === 'rejected' ? 'bg-[#e2c08d]/20 text-[#e2c08d]' : 'bg-[#4ec9b0]/20 text-[#4ec9b0]'}`}>
             {editStatus === 'rejected' ? 'Reverted' : 'Applied'}
           </span>
         )}
-        <ChevronDown className={`size-3 text-[#666] ml-auto transition-transform flex-shrink-0 ${isOpen ? 'rotate-0' : '-rotate-90'}`} />
-      </button>
-      {isOpen && (
-        <div className="max-h-64 overflow-y-auto bg-[#1e1e1e] flex flex-col">
-          {(isEditFile && step.toolArgs?.old_string !== undefined) ? (
-            <div className="p-2 flex flex-col gap-2">
-              <div className="flex justify-end">
-                <button
-                  onClick={() => setShowSideBySide(!showSideBySide)}
-                  className="text-[9px] px-1.5 py-0.5 rounded bg-[#333] text-[#ccc] hover:bg-[#444] transition-colors"
-                >
-                  {showSideBySide ? 'Inline Diff' : 'Side-by-Side'}
-                </button>
-              </div>
-              
-              {showSideBySide ? (
-                <div className="h-40 w-full border border-[#333]">
-                  <MonacoDiffEditor
-                    height="100%"
-                    language={getLanguage(String(step.toolArgs.path || ''))}
-                    theme="vs-dark"
-                    original={String(step.toolArgs.old_string || '')}
-                    modified={String(step.toolArgs.new_string || '')}
-                    options={{
-                      readOnly: true,
-                      minimap: { enabled: false },
-                      fontSize: 10,
-                      renderSideBySide: true,
-                      scrollBeyondLastLine: false,
-                    }}
-                  />
-                </div>
-              ) : (
-                <InlineDiffViewer
-                  oldStr={String(step.toolArgs.old_string || '')}
-                  newStr={String(step.toolArgs.new_string || '')}
-                />
-              )}
-
-              {isFinished && !step.isError && !editStatus && (
-                <div className="flex items-center gap-2 mt-2 pt-2 border-t border-[#333]">
-                  <button
-                    onClick={handleAcceptEdit}
-                    className="text-[10px] px-2 py-1 rounded bg-[#4ec9b0]/20 text-[#4ec9b0] hover:bg-[#4ec9b0]/30 transition-colors"
-                  >
-                    Accept
-                  </button>
-                  <button
-                    onClick={handleRejectEdit}
-                    className="text-[10px] px-2 py-1 rounded bg-[#c74e39]/20 text-[#c74e39] hover:bg-[#c74e39]/30 transition-colors"
-                  >
-                    Reject & Revert
-                  </button>
-                  <span className="text-[9px] text-[#666] ml-auto">
-                    {approvalMode === 'auto' ? 'Auto-applied' : 'Awaiting review'}
-                  </span>
-                </div>
-              )}
-            </div>
-          ) : isWriteFile && step.toolArgs?.content ? (
-            <div className="p-2">
-              <div className="text-[9px] text-[#888] font-mono mb-1">New file — {String(step.toolArgs.path || '')}</div>
-              <InlineDiffViewer
-                oldStr=""
-                newStr={String(step.toolArgs.content || '')}
-              />
-            </div>
-          ) : (
-            <div className="p-2 text-[10px] font-mono text-[#888] whitespace-pre-wrap">
-              {step.toolOutput || 'Running...'}
-            </div>
-          )}
-          <div ref={endRef} />
+      </div>
+      <div className="px-2.5 py-1 text-[9px] text-[#555] font-mono border-b border-[#333] truncate">{filePath}</div>
+      {isFinished && !step.isError && !editStatus && (
+        <div className="flex items-center gap-2 px-2.5 py-2 bg-[#252526] border-t border-[#333]">
+          <button onClick={handleAcceptEdit} className="text-[10px] px-2 py-1 rounded bg-[#4ec9b0]/20 text-[#4ec9b0] hover:bg-[#4ec9b0]/30 transition-colors">Accept</button>
+          <button onClick={handleRejectEdit} className="text-[10px] px-2 py-1 rounded bg-[#c74e39]/20 text-[#c74e39] hover:bg-[#c74e39]/30 transition-colors">Reject</button>
+          <span className="text-[9px] text-[#555] ml-auto">{approvalMode === 'auto' ? 'auto-applied' : 'awaiting review'}</span>
         </div>
       )}
     </div>
@@ -956,23 +914,14 @@ function AiMessageBubble({ role, content, steps, model, provider }: { role: stri
         </div>
 
         {steps && steps.length > 0 && (
-          <div className="flex flex-col gap-1 mx-3 mt-2">
+          <div className="flex flex-col mx-3 mt-2 gap-0.5">
             {steps.map((step, idx) => {
               if (step.type === 'thought') {
                 const isActive = !step.toolOutput && idx === steps.length - 1;
                 return (
-                  <details key={idx} className="group">
-                    <summary className="flex items-center gap-1 text-[10px] text-[#888] hover:text-[#cccccc] transition-colors cursor-pointer select-none">
-                      <ChevronRight className="size-3 group-open:hidden" />
-                      <ChevronDown className="size-3 hidden group-open:block" />
-                      <span className={isActive ? 'vibeforge-wave-text' : 'italic text-[#666]'}>
-                        {isActive ? 'Thinking...' : 'Thought'}
-                      </span>
-                    </summary>
-                    <div className="mt-1 mb-1 text-[10px] text-[#777] italic bg-[#1a1a1a] rounded p-2 border border-[#333]">
-                      {step.text}
-                    </div>
-                  </details>
+                  <div key={idx} className="text-[10px] text-[#888] py-0.5">
+                    <span className={isActive ? 'vibeforge-wave-text' : 'text-[#555] italic'}>{step.text ? step.text.slice(0, 80) + (step.text.length > 80 ? '...' : '') : (isActive ? 'Thinking...' : '')}</span>
+                  </div>
                 );
               }
               if (step.type === 'tool_call') {

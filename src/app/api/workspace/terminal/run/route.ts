@@ -1,46 +1,99 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { exec } from 'child_process';
-import { promisify } from 'util';
+import { NextRequest } from 'next/server';
+import { spawn } from 'child_process';
 
-const execAsync = promisify(exec);
+const RUNNING_PROCESSES = new Map<string, ReturnType<typeof spawn>>();
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { command, cwd } = body;
+    const { command, cwd, action, processId } = body;
+
+    // Handle process kill
+    if (action === 'kill' && processId) {
+      const proc = RUNNING_PROCESSES.get(processId);
+      if (proc) {
+        // Kill process tree on Windows/Linux
+        if (process.platform === 'win32') {
+          spawn('taskkill', ['/pid', proc.pid!.toString(), '/T', '/F']);
+        } else {
+          process.kill(-proc.pid!);
+        }
+        RUNNING_PROCESSES.delete(processId);
+        return new Response(JSON.stringify({ ok: true, message: 'Process killed' }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: 'Process not found' }), { status: 404 });
+    }
 
     if (!command) {
-      return NextResponse.json({ error: 'Command is required' }, { status: 400 });
+      return new Response(JSON.stringify({ error: 'Command is required' }), { status: 400 });
     }
 
-    // Basic security validation: prevent chaining or backgrounding (for MVP local usage, we allow most commands, but protect root traversal)
-    if (command.includes('sudo') || command.includes('rm -rf /') || command.includes(':(){:|:&};:')) {
-      return NextResponse.json({ error: 'Forbidden command signature detected' }, { status: 403 });
-    }
+    const pid = `proc_${Date.now()}`;
+    const encoder = new TextEncoder();
 
-    try {
-      const { stdout, stderr } = await execAsync(command, {
-        cwd: cwd || process.cwd(),
-        timeout: 15000, // 15s timeout
-        env: { ...process.env },
-      });
+    const stream = new ReadableStream({
+      start(controller) {
+        const emit = (event: string, data: any) => {
+          try {
+            controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+          } catch {}
+        };
 
-      return NextResponse.json({
-        ok: true,
-        stdout,
-        stderr,
-        cwd: cwd || process.cwd(),
-      });
-    } catch (execError: any) {
-      return NextResponse.json({
-        ok: false,
-        stdout: execError.stdout || '',
-        stderr: execError.stderr || execError.message,
-        cwd: cwd || process.cwd(),
-      });
-    }
+        const isWin = process.platform === 'win32';
+        const shell = isWin ? 'powershell.exe' : 'bash';
+        const args = isWin ? ['-Command', command] : ['-c', command];
+
+        const child = spawn(shell, args, {
+          cwd: cwd || process.cwd(),
+          env: { ...process.env, FORCE_COLOR: '1' },
+          detached: !isWin, // Detach to allow killing process group on Unix
+        });
+
+        RUNNING_PROCESSES.set(pid, child);
+        emit('pid', { processId: pid });
+
+        child.stdout.on('data', (data) => {
+          emit('stdout', { text: data.toString() });
+        });
+
+        child.stderr.on('data', (data) => {
+          emit('stderr', { text: data.toString() });
+        });
+
+        child.on('close', (code) => {
+          RUNNING_PROCESSES.delete(pid);
+          emit('close', { code });
+          try { controller.close(); } catch {}
+        });
+
+        child.on('error', (err) => {
+          RUNNING_PROCESSES.delete(pid);
+          emit('error', { text: err.message });
+          try { controller.close(); } catch {}
+        });
+      },
+      cancel() {
+        const proc = RUNNING_PROCESSES.get(pid);
+        if (proc) {
+          if (process.platform === 'win32') {
+            spawn('taskkill', ['/pid', proc.pid!.toString(), '/T', '/F']);
+          } else {
+            process.kill(-proc.pid!);
+          }
+          RUNNING_PROCESSES.delete(pid);
+        }
+      }
+    });
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return new Response(JSON.stringify({ error: message }), { status: 500 });
   }
 }

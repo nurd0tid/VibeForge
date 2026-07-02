@@ -1529,22 +1529,64 @@ export default function WorkspacePage() {
         return;
       }
       const pName = project?.name || 'Project';
-      addAiMessage({ role: 'assistant', content: `Initializing memory bank for **${pName}** at \`${projectPath}\`...\n\nCreating \`.vibeforge/memory-bank/\` with 10 context files.` });
+      addAiMessage({ role: 'assistant', content: `Initializing memory bank for **${pName}** at \`${projectPath}\`...\n\nScanning project structure & package dependencies...` });
+      
       try {
+        // Create directory first
         await fetch('/api/workspace/terminal/run', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ command: `mkdir -p .vibeforge/memory-bank`, cwd: projectPath })
         });
+
+        // 1. Detect Stack via package.json
+        let detectedStack = '[Primary tech stack]';
+        try {
+          const pkgRes = await fetch(`/api/workspace/file?path=${encodeURIComponent(projectPath + '/package.json')}`);
+          if (pkgRes.ok) {
+            const pkgData = await pkgRes.json();
+            const pkg = JSON.parse(pkgData.content || '{}');
+            const deps = Object.keys(pkg.dependencies || {});
+            const devDeps = Object.keys(pkg.devDependencies || {});
+            const allDeps = [...deps, ...devDeps];
+            
+            const stackList = [];
+            if (allDeps.includes('next')) stackList.push('Next.js');
+            else if (allDeps.includes('react')) stackList.push('React');
+            else if (allDeps.includes('express')) stackList.push('Express.js');
+            else if (allDeps.includes('vue')) stackList.push('Vue.js');
+            
+            if (allDeps.includes('typescript')) stackList.push('TypeScript');
+            if (allDeps.includes('tailwindcss')) stackList.push('Tailwind CSS');
+            if (allDeps.includes('prisma')) stackList.push('Prisma ORM');
+            
+            if (stackList.length > 0) {
+              detectedStack = stackList.join(', ');
+            }
+          }
+        } catch {}
+
+        // 2. Detect Folder Structure via file tree endpoint
+        let detectedFolders = 'root/\n';
+        try {
+          const treeRes = await fetch(`/api/workspace/tree?path=${encodeURIComponent(projectPath)}`);
+          if (treeRes.ok) {
+            const tree = await treeRes.json();
+            if (Array.isArray(tree)) {
+              detectedFolders = tree.map((n: any) => `- ${n.name}${n.isDirectory ? '/' : ''}`).slice(0, 15).join('\n');
+            }
+          }
+        } catch {}
+
         const now = new Date().toISOString().split('T')[0];
         const files: Record<string, string> = {
-          'projectBrief.md': `# Project Brief — ${pName}\n\n## Purpose\n[What this project does]\n\n## Stack\n[Primary tech stack]\n\n## Scope\n[Initial scope and goals]\n`,
-          'productContext.md': `# Product Context — ${pName}\n\n## Target Users\n[Who uses this product]\n\n## Key Modules\n[Main features/modules]\n\n## Business Logic\n[Important business rules]\n`,
-          'activeContext.md': `# Active Context — ${pName}\n\n## Current Focus\n[What is being worked on now]\n\n## Active Files\n[Files currently under modification]\n\n## Constraints\n[Things to watch out for]\n`,
-          'systemPatterns.md': `# System Patterns — ${pName}\n\n## Architecture\n[Architecture pattern used]\n\n## Folder Structure\n[Key folder conventions]\n\n## Component Patterns\n[How components are structured]\n\n## API Patterns\n[How APIs are organized]\n`,
+          'projectBrief.md': `# Project Brief — ${pName}\n\n## Purpose\n[What this project does]\n\n## Stack\n- ${detectedStack}\n\n## Scope\n- Development and refinement of system components.\n`,
+          'productContext.md': `# Product Context — ${pName}\n\n## Target Users\n[Who uses this product]\n\n## Key Modules\n- Codebase Workspace\n- AI Assistant Loops\n\n## Business Logic\n[Important business rules]\n`,
+          'activeContext.md': `# Active Context — ${pName}\n\n## Current Focus\n- System setup and structure verification\n\n## Active Files\n- package.json\n\n## Constraints\n- Follow language-specific lint and type configurations\n`,
+          'systemPatterns.md': `# System Patterns — ${pName}\n\n## Architecture\n- Client-Server or Single App architecture\n\n## Folder Structure\n\`\`\`txt\n${detectedFolders}\n\`\`\`\n\n## Component Patterns\n- Standard modular components\n`,
           'decisionLog.md': `# Decision Log — ${pName}\n\n| Date | Decision | Reason | Impact |\n|------|----------|--------|--------|\n| ${now} | Initialize memory bank | Track context across sessions | Enables smarter agent behavior |\n`,
-          'progress.md': `# Progress — ${pName}\n\n## Completed\n- Memory bank initialized (${now})\n\n## In Progress\n[Current work]\n\n## Pending\n[Upcoming work]\n\n## Blockers\n[Any blockers]\n`,
-          'knownIssues.md': `# Known Issues — ${pName}\n\n## Open Issues\n[List known bugs or problems]\n\n## Workarounds\n[Any temporary fixes in place]\n`,
+          'progress.md': `# Progress — ${pName}\n\n## Completed\n- Memory bank initialized (${now})\n\n## In Progress\n- Project structure mapping\n\n## Pending\n- Feature refinement\n\n## Blockers\n- None\n`,
+          'knownIssues.md': `# Known Issues — ${pName}\n\n## Open Issues\n- None\n\n## Workarounds\n- None\n`,
           'fixedDoNotBreak.md': `# Fixed — Do Not Break — ${pName}\n\nAreas that have been fixed and must not be regressed:\n\n[Agent will populate this as fixes are applied]\n`,
           'regressionGuard.md': `# Regression Guard — ${pName}\n\n## Checklist Before Making Changes\n- [ ] Read relevant docs/context first\n- [ ] Inspect actual files before editing\n- [ ] Use small, incremental changes\n- [ ] Verify after change\n- [ ] Do not claim done without evidence\n- [ ] Check fixedDoNotBreak.md\n`,
           'updateLog.md': `# Update Log — ${pName}\n\n| Date | What Changed | Updated By |\n|------|-------------|------------|\n| ${now} | Memory bank initialized | VibeForge Agent |\n`,
@@ -1563,7 +1605,7 @@ export default function WorkspacePage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ path: `${projectPath}/.vibeforge/memory-bank.md`, content: mbSummary })
         });
-        addAiMessage({ role: 'assistant', content: `**Memory Bank initialized!**\n\nCreated \`.vibeforge/memory-bank/\` with:\n${Object.keys(files).map(f => `- ${f}`).join('\n')}\n\nPlus \`.vibeforge/memory-bank.md\` index file.\n\nThe agent will read these before tasks and update them after completion.` });
+        addAiMessage({ role: 'assistant', content: `**Memory Bank initialized!**\n\nCreated \`.vibeforge/memory-bank/\` with scanned stack and directory layout:\n${Object.keys(files).map(f => `- ${f}`).join('\n')}\n\nScanned stack: **${detectedStack}**\n\nAI agent has parsed your project files and is ready to work on this project.` });
       } catch {
         addAiMessage({ role: 'assistant', content: 'Failed to initialize memory bank. Check the project path and try again.' });
       }

@@ -174,6 +174,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         set({
           aiMessages: [...INITIAL_MESSAGES],
           activeChatSessionId: null,
+          contextUsedTokens: 0,
         });
       },
       triggerCollapseAll: () => set((state) => ({ collapseAllTrigger: state.collapseAllTrigger + 1 })),
@@ -212,9 +213,12 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         const { chatSessions } = get();
         const session = chatSessions.find((s) => s.id === id);
         if (!session) return;
+        const charCount = session.messages.reduce((sum, m) => sum + (m.content?.length || 0), 0);
+        const estTokens = Math.round(charCount / 4);
         set({
           aiMessages: [...session.messages],
           activeChatSessionId: id,
+          contextUsedTokens: estTokens,
         });
       },
 
@@ -227,6 +231,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             ...(wasActive ? {
               activeChatSessionId: null,
               aiMessages: [...INITIAL_MESSAGES],
+              contextUsedTokens: 0,
             } : {}),
           };
         });
@@ -237,6 +242,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         set({
           aiMessages: [...INITIAL_MESSAGES],
           activeChatSessionId: null,
+          contextUsedTokens: 0,
         });
       },
 

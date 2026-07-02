@@ -30,13 +30,52 @@ Open-source AI Coding Workspace — VS Code + Linear + AI Agent in one.
 | Database | NocoDB REST API v1 |
 | Icons | Lucide React |
 
+## Prerequisites
+
+### NocoDB Setup (Required)
+
+VibeForge uses NocoDB as the database backend. You must set up NocoDB before running VibeForge.
+
+1. **Run NocoDB** via Docker:
+   ```bash
+   docker run -d -p 8080:8080 nocodb/nocodb:latest
+   ```
+   Or visit the official setup guide: **https://docs.nocodb.com/getting-started/self-hosted/installation/**
+
+2. **Open NocoDB UI** at [http://localhost:8080](http://localhost:8080)
+
+3. **Create a workspace and a base** (database)
+
+4. **Create the required tables** with these names (exact):
+   - `projects`, `tasks`, `schedules`, `daily_logs`, `weekly_logs`
+   - `agent_runs`, `providers`, `plans`
+
+5. **Get your API token** from: Profile → Team & Auth → API Tokens
+
+6. **Get your IDs** from the URL when inside a base:
+   ```
+   http://localhost:8080/#/nc/{WORKSPACE_ID}/{BASE_ID}
+   ```
+
+7. Fill your `.env.local` with:
+   ```env
+   NOCODB_BASE_URL=http://localhost:8080
+   NOCODB_WORKSPACE_ID=your_workspace_id
+   NOCODB_BASE_ID=your_base_id
+   NOCODB_API_TOKEN=your_api_token
+   ```
+
+> **Note:** VibeForge runs on port **3456** by default to avoid conflicting with your user projects which typically run on port 3000.
+
+---
+
 ## Setup
 
 ```bash
 # 1. Install
 pnpm install
 
-# 2. Configure environment
+# 2. Configure environment (see NocoDB Setup above first)
 cp .env.example .env.local
 # Fill in NOCODB_BASE_URL, NOCODB_WORKSPACE_ID, NOCODB_BASE_ID, NOCODB_API_TOKEN
 
@@ -44,7 +83,7 @@ cp .env.example .env.local
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3456](http://localhost:3456).
 
 ## Commands
 

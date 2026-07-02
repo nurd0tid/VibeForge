@@ -293,17 +293,18 @@ When you need to use a tool, output the <tool_use> block. The system will execut
             let lastFetchError: string = '';
             for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
               try {
+                // No signal timeout here — streaming LLM responses can take many minutes.
+                // Retry logic handles actual network failures (fetch failed, ECONNREFUSED).
                 llmRes = await fetch(url, {
                   method: 'POST',
                   headers,
                   body: JSON.stringify(requestBody),
-                  signal: AbortSignal.timeout(120000), // 120s per request
                 });
                 lastFetchError = '';
                 break; // success
               } catch (fetchErr: unknown) {
                 lastFetchError = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
-                const isRetriable = lastFetchError.includes('fetch failed') || lastFetchError.includes('ECONNREFUSED') || lastFetchError.includes('timeout') || lastFetchError.includes('ETIMEDOUT');
+                const isRetriable = lastFetchError === 'fetch failed' || lastFetchError.includes('ECONNREFUSED') || lastFetchError.includes('ETIMEDOUT');
                 if (!isRetriable || attempt >= MAX_RETRIES) throw fetchErr;
                 // Wait 2s before retrying
                 await new Promise(resolve => setTimeout(resolve, 2000));

@@ -743,9 +743,27 @@ function ToolCallStep({ step }: { step: AgentStep }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFinished, isEditFile, step.isError]);
 
+  useEffect(() => {
+    if (isFinished && (isEditFile || isWriteFile) && !step.isError && approvalMode === 'auto') {
+      const path = String(step.toolArgs?.path || '');
+      if (path) {
+        const timer = setTimeout(() => {
+          useWorkspaceStore.getState().markFileTag(path, null);
+          useWorkspaceStore.getState().clearPendingDiff(path);
+        }, 3000);
+        return () => clearTimeout(timer);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFinished, isEditFile, isWriteFile, step.isError, approvalMode]);
+
   const handleAccept = () => {
     setEditStatus('applied');
-    if (step.toolArgs?.path) clearPendingDiff(String(step.toolArgs.path));
+    const path = String(step.toolArgs?.path || '');
+    if (path) {
+      clearPendingDiff(path);
+      useWorkspaceStore.getState().markFileTag(path, null);
+    }
   };
 
   const handleReject = async () => {
@@ -759,6 +777,7 @@ function ToolCallStep({ step }: { step: AgentStep }) {
       setEditStatus('rejected');
       clearPendingDiff(String(step.toolArgs.path));
       useWorkspaceStore.getState().updateFileContent(String(step.toolArgs.path), reverted);
+      useWorkspaceStore.getState().markFileTag(String(step.toolArgs.path), null);
       toast.info('Reverted');
     } catch { toast.error('Failed to revert'); }
   };

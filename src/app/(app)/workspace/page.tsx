@@ -1564,7 +1564,7 @@ export default function WorkspacePage() {
     setShowInterruptedBanner(false);
     
     // Begin streaming loop again
-    setAgentRunning(true, 'Resuming your request...');
+    setAgentRunning(true, 'Thinking...');
     globalAiAbortController = new AbortController();
     abortControllerRef.current = globalAiAbortController;
     
@@ -1840,7 +1840,7 @@ export default function WorkspacePage() {
       setTimeout(() => saveChatSession(), 0);
     }
     
-    setAgentRunning(true, 'Analyzing your request...');
+    setAgentRunning(true, 'Thinking...');
     globalAiAbortController = new AbortController();
     abortControllerRef.current = globalAiAbortController;
     setShowInterruptedBanner(false);

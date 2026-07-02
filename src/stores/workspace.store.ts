@@ -8,6 +8,7 @@ interface OpenFile {
   content: string;
   isDirty: boolean;
   isDeleted?: boolean;
+  tag?: 'created' | 'edited';
 }
 
 export interface AgentStep {
@@ -65,6 +66,7 @@ interface WorkspaceState {
   updateFileContent: (path: string, content: string) => void;
   markFileSaved: (path: string) => void;
   markFileDeleted: (path: string, deleted: boolean) => void;
+  markFileTag: (path: string, tag: 'created' | 'edited' | null) => void;
   setActivePanel: (panel: SidePanel) => void;
   setBottomTab: (tab: BottomTab) => void;
   addAiMessage: (msg: AiMessage) => void;
@@ -172,6 +174,14 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         set((state) => ({
           openFiles: state.openFiles.map((f) =>
             f.path === path ? { ...f, isDeleted: deleted } : f
+          ),
+        }));
+      },
+
+      markFileTag: (path, tag) => {
+        set((state) => ({
+          openFiles: state.openFiles.map((f) =>
+            f.path === path ? { ...f, tag: tag || undefined, isDeleted: false } : f
           ),
         }));
       },

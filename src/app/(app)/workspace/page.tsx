@@ -962,33 +962,70 @@ function AiMessageBubble({ role, content, steps, model, provider }: { role: stri
           )}
         </div>
 
-        {steps && steps.length > 0 && (
-          <div className="flex flex-col mx-3 mt-2 gap-0">
-            {steps.map((step, idx) => {
-              if (step.type === 'thought') {
-                const isActive = !step.toolOutput && idx === steps.length - 1;
-                return (
-                  <div key={idx} className="text-[9px] py-0.5">
-                    <span className={isActive ? 'vibeforge-wave-text' : 'text-[#555] italic'}>{step.text ? step.text.slice(0, 80) + (step.text.length > 80 ? '...' : '') : (isActive ? 'Thinking...' : '')}</span>
-                  </div>
-                );
-              }
-              if (step.type === 'tool_call') {
-                return (
-                  <div key={idx}>
-                    <div className="flex items-center gap-1.5 my-1">
-                      <div className="flex-1 h-px bg-[#333]" />
-                      <span className="text-[8px] text-[#555] uppercase tracking-widest shrink-0">{step.toolName === 'read_file' ? 'read' : step.toolName === 'list_directory' ? 'visit' : step.toolName === 'edit_file' ? 'edit' : step.toolName === 'write_file' ? 'create' : step.toolName === 'run_command' ? 'command' : step.toolName?.replace('memory_', '') || 'tool'}</span>
-                      <div className="flex-1 h-px bg-[#333]" />
+        {steps && steps.length > 0 && (() => {
+          const allFinished = steps.every(s => s.type === 'thought' || !!s.toolOutput);
+          const toolSteps = steps.filter(s => s.type === 'tool_call');
+          
+          if (allFinished && content && toolSteps.length > 0) {
+            return (
+              <details className="mx-3 mt-2 mb-1 group">
+                <summary className="flex items-center gap-1.5 text-[9px] text-[#555] cursor-pointer hover:text-[#888] transition-colors select-none list-none">
+                  <ChevronRight className="size-2.5 shrink-0 group-open:rotate-90 transition-transform" />
+                  <span>Show output</span>
+                  <span className="text-[#444]">({toolSteps.length} {toolSteps.length === 1 ? 'step' : 'steps'})</span>
+                </summary>
+                <div className="flex flex-col gap-0 mt-1 pl-1">
+                  {steps.map((step, idx) => {
+                    if (step.type === 'thought') {
+                      return <div key={idx} className="text-[9px] text-[#555] italic py-0.5 truncate">{step.text?.slice(0, 60)}</div>;
+                    }
+                    if (step.type === 'tool_call') {
+                      return (
+                        <div key={idx}>
+                          <div className="flex items-center gap-1.5 my-0.5">
+                            <div className="flex-1 h-px bg-[#333]" />
+                            <span className="text-[8px] text-[#555] uppercase tracking-widest shrink-0">{step.toolName === 'read_file' ? 'read' : step.toolName === 'list_directory' ? 'visit' : step.toolName === 'edit_file' ? 'edit' : step.toolName === 'write_file' ? 'create' : step.toolName === 'run_command' ? 'command' : step.toolName?.replace('memory_', '') || 'tool'}</span>
+                            <div className="flex-1 h-px bg-[#333]" />
+                          </div>
+                          <ToolCallStep step={step} />
+                        </div>
+                      );
+                    }
+                    return null;
+                  })}
+                </div>
+              </details>
+            );
+          }
+
+          return (
+            <div className="flex flex-col mx-3 mt-2 gap-0">
+              {steps.map((step, idx) => {
+                if (step.type === 'thought') {
+                  const isActive = !step.toolOutput && idx === steps.length - 1;
+                  return (
+                    <div key={idx} className="text-[9px] py-0.5">
+                      <span className={isActive ? 'vibeforge-wave-text' : 'text-[#555] italic'}>{step.text ? step.text.slice(0, 80) + (step.text.length > 80 ? '...' : '') : (isActive ? 'Thinking...' : '')}</span>
                     </div>
-                    <ToolCallStep step={step} />
-                  </div>
-                );
-              }
-              return null;
-            })}
-          </div>
-        )}
+                  );
+                }
+                if (step.type === 'tool_call') {
+                  return (
+                    <div key={idx}>
+                      <div className="flex items-center gap-1.5 my-1">
+                        <div className="flex-1 h-px bg-[#333]" />
+                        <span className="text-[8px] text-[#555] uppercase tracking-widest shrink-0">{step.toolName === 'read_file' ? 'read' : step.toolName === 'list_directory' ? 'visit' : step.toolName === 'edit_file' ? 'edit' : step.toolName === 'write_file' ? 'create' : step.toolName === 'run_command' ? 'command' : step.toolName?.replace('memory_', '') || 'tool'}</span>
+                        <div className="flex-1 h-px bg-[#333]" />
+                      </div>
+                      <ToolCallStep step={step} />
+                    </div>
+                  );
+                }
+                return null;
+              })}
+            </div>
+          );
+        })()}
 
         {content && (
           <div className="px-3 py-2 prose prose-invert prose-ide max-w-none text-[#cccccc] [&_code]:text-[#ce9178] [&_pre]:bg-[#1e1e1e] [&_pre]:border [&_pre]:border-[#3a3a3a] [&_h1]:text-[#4ec9b0] [&_h2]:text-[#4ec9b0] [&_h3]:text-[#4ec9b0] [&_blockquote]:border-[#3a3a3a]">
@@ -1163,6 +1200,7 @@ export default function WorkspacePage() {
     updateFileContent,
     markFileSaved,
     markFileDeleted,
+    markFileTag,
     setActivePanel,
     setBottomTab,
     addAiMessage,
@@ -1584,11 +1622,12 @@ export default function WorkspacePage() {
                   targetStep.isError = data.isError;
                   if (!data.isError && targetStep.toolArgs?.path) {
                     const toolName = targetStep.toolName || '';
-                    if (toolName === 'edit_file' || toolName === 'write_file') {
+                      if (toolName === 'edit_file' || toolName === 'write_file') {
                       if (cancelDiffAnimation) { cancelDiffAnimation(); cancelDiffAnimation = null; }
                       const fp = String(targetStep.toolArgs.path);
                       const fn = fp.split(/[/\\]/).pop() || 'file';
                       handleFileClick(fp, fn);
+                      markFileTag(fp, toolName === 'write_file' ? 'created' : 'edited');
                       if (toolName === 'write_file') refetchTree();
                     }
                   }
@@ -1859,11 +1898,12 @@ export default function WorkspacePage() {
                   targetStep.isError = data.isError;
                   if (!data.isError && targetStep.toolArgs?.path) {
                     const toolName = targetStep.toolName || '';
-                    if (toolName === 'edit_file' || toolName === 'write_file') {
+                      if (toolName === 'edit_file' || toolName === 'write_file') {
                       if (cancelDiffAnimation) { cancelDiffAnimation(); cancelDiffAnimation = null; }
                       const fp = String(targetStep.toolArgs.path);
                       const fn = fp.split(/[/\\]/).pop() || 'file';
                       handleFileClick(fp, fn);
+                      markFileTag(fp, toolName === 'write_file' ? 'created' : 'edited');
                       if (toolName === 'write_file') refetchTree();
                     }
                   }
@@ -2101,13 +2141,18 @@ export default function WorkspacePage() {
                           setTabContextMenu({ path: file.path, x: e.clientX, y: e.clientY });
                         }}
                       >
-                        {file.isDeleted && (
+                        {file.isDeleted && !file.tag && (
                           <span className="size-1.5 rounded-full bg-[#c74e39] flex-shrink-0" />
                         )}
-                        {file.isDirty && !file.isDeleted && (
+                        {file.tag && (
+                          <span className={`text-[8px] px-1 py-px rounded-sm shrink-0 font-medium ${file.tag === 'created' ? 'bg-[#4ec9b0]/15 text-[#4ec9b0]' : 'bg-[#e2c08d]/15 text-[#e2c08d]'}`}>
+                            {file.tag}
+                          </span>
+                        )}
+                        {file.isDirty && !file.isDeleted && !file.tag && (
                           <Circle className="size-2 fill-current text-[#e8e8e8]" />
                         )}
-                        <span className={`text-xs py-1.5 ${file.isDeleted ? 'line-through text-[#c74e39] opacity-70' : ''}`}>{file.name}</span>
+                        <span className={`text-xs py-1.5 ${file.isDeleted && !file.tag ? 'line-through text-[#c74e39] opacity-70' : ''}`}>{file.name}</span>
                         <button
                           className="hover:bg-[#333333] rounded p-0.5 transition-colors ml-1"
                           onClick={(e) => {

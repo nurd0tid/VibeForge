@@ -170,3 +170,13 @@
 .prose-ide strong {
   font-weight: 600 !important;
 }
+
+/* Monaco Editor — VibeForge AI change decorations */
+.vibeforge-ai-change-line {
+  background-color: rgba(78, 201, 176, 0.08) !important;
+}
+.vibeforge-ai-change-marker {
+  background-color: rgba(78, 201, 176, 0.7) !important;
+  width: 3px !important;
+  border-radius: 0 2px 2px 0;
+}

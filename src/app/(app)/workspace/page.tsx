@@ -1107,6 +1107,9 @@ export default function WorkspacePage() {
   const aiScrollContainerRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const aiTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const editorInstRef = useRef<any>(null);
+  const monacoRef = useRef<any>(null);
+  const decorationsRef = useRef<any>(null);
 
   const activeFile = openFiles.find((f) => f.path === activeFilePath);
 
@@ -1204,6 +1207,80 @@ export default function WorkspacePage() {
       container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
     }
   }, [aiMessages, isAgentRunning, agentStatusText]);
+
+  // Handle editor auto-scroll & gutter decorations when AI writes/edits files
+  useEffect(() => {
+    const editor = editorInstRef.current;
+    const monaco = monacoRef.current;
+    if (!editor || !monaco || !activeFilePath) return;
+
+    // Find the last assistant message
+    const assistantMsgs = aiMessages.filter(m => m.role === 'assistant');
+    if (assistantMsgs.length === 0) return;
+    const lastMsg = assistantMsgs[assistantMsgs.length - 1];
+    
+    // Check if the last step was a file change
+    const lastStep = lastMsg.steps?.[lastMsg.steps.length - 1];
+    if (!lastStep || lastStep.isError) return;
+
+    const isEdit = lastStep.toolName === 'edit_file';
+    const isWrite = lastStep.toolName === 'write_file';
+    if (!isEdit && !isWrite) return;
+
+    const targetPath = String(lastStep.toolArgs?.path || '');
+    if (!activeFilePath.endsWith(targetPath.replace(/^\./, ''))) return;
+
+    const fileContent = editor.getValue();
+    let startLine = 1;
+    let endLine = 1;
+
+    if (isEdit && lastStep.toolArgs?.new_string) {
+      const newStr = String(lastStep.toolArgs.new_string);
+      const index = fileContent.indexOf(newStr);
+      if (index !== -1) {
+        const textBefore = fileContent.substring(0, index);
+        startLine = textBefore.split('\n').length;
+        endLine = startLine + newStr.split('\n').length - 1;
+      }
+    } else if (isWrite && lastStep.toolArgs?.content) {
+      const content = String(lastStep.toolArgs.content);
+      endLine = content.split('\n').length;
+    }
+
+    try {
+      // Clear previous decorations if any
+      if (decorationsRef.current) {
+        decorationsRef.current.clear();
+      }
+
+      // Scroll editor to center the change
+      editor.revealLineInCenter(startLine);
+
+      // Create highlight decorations
+      decorationsRef.current = editor.createDecorationsCollection([
+        {
+          range: new monaco.Range(startLine, 1, endLine, 100),
+          options: {
+            isWholeLine: true,
+            linesDecorationsClassName: 'vibeforge-ai-change-marker',
+            className: 'vibeforge-ai-change-line'
+          }
+        }
+      ]);
+
+      // Clean up highlight after 6 seconds
+      const timer = setTimeout(() => {
+        if (decorationsRef.current) {
+          decorationsRef.current.clear();
+          decorationsRef.current = null;
+        }
+      }, 6000);
+
+      return () => clearTimeout(timer);
+    } catch (e) {
+      console.error('Failed to create decorations', e);
+    }
+  }, [aiMessages, activeFilePath]);
 
   useEffect(() => {
     if (isAutoCompactEnabled && contextLimit > 0) {
@@ -1884,6 +1961,10 @@ export default function WorkspacePage() {
                         if (value !== undefined) {
                           updateFileContent(activeFile.path, value);
                         }
+                      }}
+                      onMount={(editor, monaco) => {
+                        editorInstRef.current = editor;
+                        monacoRef.current = monaco;
                       }}
                       options={{
                         minimap: { enabled: true },

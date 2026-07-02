@@ -92,7 +92,7 @@ interface StreamResult {
   };
 }
 
-/** Stream LLM response — emit content chunks realtime AND collect full text for tool parsing */
+/** Stream LLM response — emit only clean prose chunks (not XML tool blocks) */
 async function readStreamWithEmit(
   body: ReadableStream<Uint8Array>,
   emitChunk: (delta: string) => void
@@ -102,7 +102,9 @@ async function readStreamWithEmit(
   let fullText = '';
   let buffer = '';
   let usage: StreamResult['usage'] = undefined;
-  
+  let streamBuffer = ''; // accumulates for XML detection
+  let inToolBlock = false;
+
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
@@ -119,7 +121,42 @@ async function readStreamWithEmit(
         const delta = chunk.choices?.[0]?.delta?.content || '';
         if (delta) {
           fullText += delta;
-          emitChunk(delta);
+          streamBuffer += delta;
+
+          // Detect start of tool block — stop emitting
+          if (!inToolBlock && streamBuffer.includes('<tool_use>')) {
+            // Emit everything BEFORE the tool block
+            const idx = streamBuffer.indexOf('<tool_use>');
+            const before = streamBuffer.slice(0, idx);
+            if (before.trim()) emitChunk(before);
+            inToolBlock = true;
+          } else if (!inToolBlock) {
+            // No tool block — safe to emit but keep a small lookbehind buffer
+            // to avoid emitting partial '<tool_use' start
+            const safeLen = streamBuffer.length - 12; // length of '<tool_use>' 
+            if (safeLen > 0) {
+              const safe = streamBuffer.slice(0, safeLen);
+              if (safe) emitChunk(safe);
+              streamBuffer = streamBuffer.slice(safeLen);
+            }
+          }
+
+          // Detect end of tool block — resume emitting
+          if (inToolBlock && streamBuffer.includes('</tool_use>')) {
+            const endIdx = streamBuffer.indexOf('</tool_use>') + '</tool_use>'.length;
+            // Check for more content after the tool block
+            const afterTool = streamBuffer.slice(endIdx);
+            inToolBlock = false;
+            streamBuffer = afterTool;
+            // Check if there's another tool block starting
+            if (afterTool.includes('<tool_use>')) {
+              const nextIdx = afterTool.indexOf('<tool_use>');
+              const between = afterTool.slice(0, nextIdx);
+              if (between.trim()) emitChunk(between);
+              inToolBlock = true;
+              streamBuffer = afterTool.slice(nextIdx);
+            }
+          }
         }
         if (chunk.usage) {
           usage = chunk.usage;
@@ -128,6 +165,10 @@ async function readStreamWithEmit(
         // ignore partial
       }
     }
+  }
+  // Emit remaining non-tool content
+  if (!inToolBlock && streamBuffer.trim()) {
+    emitChunk(streamBuffer);
   }
   return { fullText, usage };
 }

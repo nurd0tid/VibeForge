@@ -23,6 +23,8 @@ export interface AiMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   steps?: AgentStep[];
+  model?: string;
+  provider?: string;
 }
 
 export interface ChatSession {

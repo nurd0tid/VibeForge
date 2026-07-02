@@ -7,11 +7,14 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get('project_id');
+    const limit = searchParams.get('limit') ? Number(searchParams.get('limit')) : 25;
+    const offset = searchParams.get('offset') ? Number(searchParams.get('offset')) : 0;
     const where = projectId ? `(Project ID,eq,${projectId})` : undefined;
 
     const result = await listRecords<AgentRun>('agent_runs', { 
       where,
-      limit: 50,
+      limit,
+      offset,
       sort: '-CreatedAt' 
     });
     

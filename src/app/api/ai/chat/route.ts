@@ -271,6 +271,8 @@ When you need to use a tool, output the <tool_use> block. The system will execut
           const MAX_ITERATIONS = 8;
           let iteration = 0;
           let fullOutputText = '';
+          let totalInputTokens = 0;
+          let totalOutputTokens = 0;
 
           while (iteration < MAX_ITERATIONS) {
             iteration++;
@@ -308,6 +310,8 @@ When you need to use a tool, output the <tool_use> block. The system will execut
             const responseText = streamRes.fullText;
             
             if (streamRes.usage) {
+              totalInputTokens += streamRes.usage.prompt_tokens || 0;
+              totalOutputTokens += streamRes.usage.completion_tokens || 0;
               emit('usage', { used: streamRes.usage.prompt_tokens, total: streamRes.usage.total_tokens });
             }
 
@@ -368,6 +372,8 @@ When you need to use a tool, output the <tool_use> block. The system will execut
               'Status': 'completed',
               'Finished At': new Date().toISOString(),
               'Output Summary': (fullOutputText || '').slice(0, 300),
+              'Input Tokens': totalInputTokens,
+              'Output Tokens': totalOutputTokens,
             }); } catch {}
           }
 

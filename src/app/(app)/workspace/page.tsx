@@ -839,7 +839,7 @@ function ToolCallStep({ step }: { step: AgentStep }) {
   );
 }
 
-function AiMessageBubble({ role, content, steps, model }: { role: string; content: string; steps?: AgentStep[]; model?: string }) {
+function AiMessageBubble({ role, content, steps, model, provider }: { role: string; content: string; steps?: AgentStep[]; model?: string; provider?: string }) {
   const isUser = role === 'user';
   const isSystem = role === 'system';
 
@@ -874,8 +874,12 @@ function AiMessageBubble({ role, content, steps, model }: { role: string; conten
         <div className="flex items-center gap-1.5 px-3 pt-2 pb-1 border-b border-[#3a3a3a]">
           <Bot className="size-3.5 text-[#4ec9b0]" />
           <span className="font-semibold text-[10px] uppercase tracking-wide text-[#4ec9b0]">VibeForge AI</span>
-          {model && (
-            <span className="ml-auto text-[9px] px-1.5 py-0.5 bg-[#1e1e1e] text-[#888] rounded font-mono">{model}</span>
+          {(provider || model) && (
+            <span className="ml-auto text-[9px] px-1.5 py-0.5 bg-[#1e1e1e] text-[#888] rounded font-mono flex items-center gap-1">
+              {provider && <span className="text-[#4ec9b0]/80">{provider}</span>}
+              {provider && model && <span className="text-[#444]">·</span>}
+              {model && <span>{model}</span>}
+            </span>
           )}
         </div>
 
@@ -1173,15 +1177,17 @@ export default function WorkspacePage() {
   const providerDefaultModel = effectiveProvider ? getField(effectiveProvider as unknown as Record<string, unknown>, 'default_model', 'Default Model') : '';
   const defaultModelId = providerDefaultModel || activeModels[0]?.id || '';
   const effectiveModelId = (selectedModelId && activeModels.find(m => m.id === selectedModelId)) ? selectedModelId : defaultModelId;
+  const effectiveProviderName = getField((effectiveProvider || {}) as Record<string, unknown>, 'name', 'Name') || 'Provider';
 
   useEffect(() => {
     if (effectiveProvider) {
-      const ctxWindow = Number(getField(effectiveProvider as unknown as Record<string, unknown>, 'context_window', 'Context Window') || 0);
-      if (ctxWindow > 0 && ctxWindow !== contextLimit) {
-        setContextUsage(contextUsedTokens, ctxWindow);
-      }
+      const ctxWindow = Number(getField(effectiveProvider as unknown as Record<string, unknown>, 'context_window', 'Context Window') || 128000);
+      const charCount = aiMessages.reduce((sum, m) => sum + (m.content?.length || 0), 0);
+      const estTokens = Math.round(charCount / 4);
+      setContextUsage(estTokens, ctxWindow);
     }
-  }, [effectiveProvider, contextLimit, contextUsedTokens, setContextUsage]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveProviderId, effectiveModelId]);
 
   const { data: fileTree = [], isLoading: isLoadingTree, refetch: refetchTree } = useQuery<FileNode[]>({
     queryKey: ['workspace-tree', projectPath],
@@ -1390,7 +1396,7 @@ export default function WorkspacePage() {
     abortControllerRef.current = globalAiAbortController;
     
     // Ensure we have a fresh assistant message slot
-    addAiMessage({ role: 'assistant', content: '' });
+    addAiMessage({ role: 'assistant', content: '', model: effectiveModelId, provider: effectiveProviderName });
 
     try {
       const response = await fetch('/api/ai/chat', {
@@ -1598,7 +1604,7 @@ export default function WorkspacePage() {
     }
 
     addAiMessage({ role: 'user', content: userMsg });
-    addAiMessage({ role: 'assistant', content: '' });
+    addAiMessage({ role: 'assistant', content: '', model: effectiveModelId, provider: effectiveProviderName });
     
     if (!activeChatSessionId) {
       setTimeout(() => saveChatSession(), 0);
@@ -2261,7 +2267,7 @@ export default function WorkspacePage() {
             {/* Messages */}
             <div ref={aiScrollContainerRef} className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0">
               {aiMessages.map((msg, i) => (
-                <AiMessageBubble key={i} role={msg.role} content={msg.content} steps={msg.steps} model={i > 0 && msg.role === 'assistant' ? effectiveModelId : undefined} />
+                <AiMessageBubble key={i} role={msg.role} content={msg.content} steps={msg.steps} model={msg.model} provider={msg.provider} />
               ))}
               {isAgentRunning && (
                 <div className="flex items-center gap-2 text-xs text-[#888]">

@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Bot, RefreshCw, CheckCircle2, XCircle, Clock, Activity, Zap, BarChart2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/common/ErrorState';
 import { EmptyState } from '@/components/common/EmptyState';
 import { formatDistanceToNow, differenceInMilliseconds, subHours, format } from 'date-fns';
@@ -14,11 +15,13 @@ import { Area, AreaChart, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 import { getField } from '@/lib/nocodb-fields';
 import type { AgentRun, NocoDBListResponse } from '@/types';
 
-function useAgentRuns() {
+function useAgentRuns(page: number = 1, pageSize: number = 50) {
   return useQuery({
-    queryKey: ['agent-runs'],
+    queryKey: ['agent-runs', page, pageSize],
     queryFn: async () => {
-      const res = await fetch('/api/agents?limit=100');
+      // limit max fetches so we don't blow up NocoDB
+      const offset = (page - 1) * pageSize;
+      const res = await fetch(`/api/agents?limit=${pageSize}&offset=${offset}`);
       if (!res.ok) throw new Error('Failed to fetch agent runs');
       return res.json() as Promise<NocoDBListResponse<AgentRun>>;
     },
@@ -143,7 +146,9 @@ function UsageChart({ buckets }: { buckets: ReturnType<typeof buildBuckets> }) {
 }
 
 export default function AgentsPage() {
-  const { data, isLoading, error, refetch } = useAgentRuns();
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 25;
+  const { data, isLoading, error, refetch } = useAgentRuns(page, PAGE_SIZE);
   const [countdown, setCountdown] = useState(60);
 
   useEffect(() => {
@@ -177,6 +182,8 @@ export default function AgentsPage() {
       totalLatencyMs: number;
       latencyCount: number;
       lastStatus: string;
+      inputTokens: number;
+      outputTokens: number;
     }> = {};
 
     for (const run of runs) {
@@ -187,11 +194,15 @@ export default function AgentsPage() {
       const startedAtStr = getField(r, 'started_at', 'Started At');
       const finishedAtStr = getField(r, 'finished_at', 'Finished At');
       const status = getField(r, 'status', 'Status');
+      const inTok = Number(getField(r, 'input_tokens', 'Input Tokens') || 0);
+      const outTok = Number(getField(r, 'output_tokens', 'Output Tokens') || 0);
 
       if (!map[model]) {
-        map[model] = { provider, model, requests: 0, lastUsed: null, totalLatencyMs: 0, latencyCount: 0, lastStatus: '' };
+        map[model] = { provider, model, requests: 0, lastUsed: null, totalLatencyMs: 0, latencyCount: 0, lastStatus: '', inputTokens: 0, outputTokens: 0 };
       }
       map[model].requests++;
+      map[model].inputTokens += inTok;
+      map[model].outputTokens += outTok;
 
       const startedAt = startedAtStr ? new Date(startedAtStr) : null;
       if (startedAt) {
@@ -213,7 +224,7 @@ export default function AgentsPage() {
     return Object.values(map).sort((a, b) => b.requests - a.requests);
   }, [runs]);
 
-  const recentRuns = useMemo(() => runs.slice(0, 20), [runs]);
+  const recentRuns = useMemo(() => runs, [runs]);
 
   if (isLoading) {
     return (
@@ -315,8 +326,8 @@ export default function AgentsPage() {
                         <TableCell className="text-xs text-muted-foreground">
                           {stat.lastUsed ? formatDistanceToNow(stat.lastUsed, { addSuffix: true }) : '—'}
                         </TableCell>
-                        <TableCell className="text-xs text-right text-muted-foreground">N/A</TableCell>
-                        <TableCell className="text-xs text-right text-muted-foreground">N/A</TableCell>
+                        <TableCell className="text-xs text-right font-mono text-muted-foreground">{stat.inputTokens > 0 ? stat.inputTokens.toLocaleString() : '—'}</TableCell>
+                        <TableCell className="text-xs text-right font-mono text-muted-foreground">{stat.outputTokens > 0 ? stat.outputTokens.toLocaleString() : '—'}</TableCell>
                         <TableCell className="text-xs text-right font-mono">{avgLatency}</TableCell>
                         <TableCell className="text-center">
                           {stat.lastStatus === 'completed' ? (
@@ -343,7 +354,9 @@ export default function AgentsPage() {
         <CardHeader className="pb-3 flex flex-row items-center gap-2">
           <Clock className="h-4 w-4 text-blue-500" />
           <CardTitle className="text-base font-medium">Recent Agent Runs</CardTitle>
-          <span className="text-xs text-muted-foreground ml-auto">last {recentRuns.length} runs</span>
+          <span className="text-xs text-muted-foreground ml-auto">
+            Page {page} · {recentRuns.length} items
+          </span>
         </CardHeader>
         <CardContent className="pt-0">
           {recentRuns.length === 0 ? (
@@ -426,9 +439,32 @@ export default function AgentsPage() {
         </CardContent>
       </Card>
 
-      <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground pb-2">
-        <Zap className="h-3 w-3" />
-        <span>Live data · refreshes every 60s</span>
+      <div className="flex items-center justify-between pb-2">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Zap className="h-3 w-3" />
+          <span>Live data · refreshes every 60s</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs px-2.5"
+            disabled={page <= 1}
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+          >
+            ← Prev
+          </Button>
+          <span className="text-xs text-muted-foreground font-mono px-1">Page {page}</span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs px-2.5"
+            disabled={recentRuns.length < PAGE_SIZE}
+            onClick={() => setPage(p => p + 1)}
+          >
+            Next →
+          </Button>
+        </div>
       </div>
     </div>
   );

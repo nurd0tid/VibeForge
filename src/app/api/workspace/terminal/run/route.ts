@@ -50,15 +50,18 @@ export async function POST(request: NextRequest) {
           ? ['-NoLogo', '-NonInteractive', '-Command', command]
           : ['-c', command];
 
+        const childEnv = { ...process.env };
+        delete childEnv['PORT'];
+
         const child = spawn(shell, args, {
           cwd: cwd && cwd.trim() ? cwd.trim() : undefined,
           env: {
-            ...process.env,
-            FORCE_COLOR: '0',  // Disable color output
+            ...childEnv,
+            FORCE_COLOR: '0',
             NO_COLOR: '1',
             TERM: 'dumb',
           },
-          detached: !isWin, // Detach to allow killing process group on Unix
+          detached: !isWin,
         });
 
         RUNNING_PROCESSES.set(pid, child);

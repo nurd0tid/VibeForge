@@ -1609,9 +1609,10 @@ export default function WorkspacePage() {
   // Check for deleted files whenever the file tree refreshes
   useEffect(() => {
     if (!fileTree.length || !openFiles.length) return;
-    const allPaths = new Set(flattenTree(fileTree).map((n) => n.path));
+    const allPaths = new Set(flattenTree(fileTree).map((n) => n.path.replace(/\\/g, '/')));
     openFiles.forEach((f) => {
-      const shouldBeDeleted = !allPaths.has(f.path);
+      const normalizedPath = f.path.replace(/\\/g, '/');
+      const shouldBeDeleted = !allPaths.has(normalizedPath);
       if (shouldBeDeleted !== !!f.isDeleted) {
         markFileDeleted(f.path, shouldBeDeleted);
       }

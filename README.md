@@ -101,7 +101,7 @@ After setting up NocoDB (cloud or Docker), create these tables with **exact name
 | `weekly_logs` | Weekly summaries |
 | `agent_runs` | AI agent execution history |
 | `providers` | AI provider configurations |
-| `plans` | Task plans |
+| `task_plans` | Task plans |
 
 > **Note:** VibeForge runs on port **3456** by default to avoid conflicting with your user projects which typically run on port 3000.
 
@@ -117,7 +117,10 @@ pnpm install
 cp .env.example .env.local
 # Fill in NOCODB_BASE_URL, NOCODB_WORKSPACE_ID, NOCODB_BASE_ID, NOCODB_API_TOKEN
 
-# 3. Run
+# 3. Initialize NocoDB tables automatically (Requires Node.js)
+node scripts/setup-nocodb.js
+
+# 4. Run
 pnpm dev
 ```
 

@@ -112,6 +112,39 @@ const TABLES = [
       { column_name: 'finished_at', title: 'Finished At', uidt: 'DateTime' },
       { column_name: 'error_message', title: 'Error Message', uidt: 'LongText' }
     ]
+  },
+  {
+    table_name: 'task_plans',
+    title: 'Task Plans',
+    columns: [
+      { column_name: 'project_id', title: 'Project ID', uidt: 'Number' },
+      { column_name: 'task_id', title: 'Task ID', uidt: 'Number' },
+      { column_name: 'title', title: 'Title', uidt: 'SingleLineText' },
+      { column_name: 'objective', title: 'Objective', uidt: 'LongText' },
+      { column_name: 'scope', title: 'Scope', uidt: 'LongText' },
+      { column_name: 'out_of_scope', title: 'Out of Scope', uidt: 'LongText' },
+      { column_name: 'plan_steps', title: 'Plan Steps', uidt: 'LongText' },
+      { column_name: 'risks', title: 'Risks', uidt: 'LongText' },
+      { column_name: 'dependencies', title: 'Dependencies', uidt: 'LongText' },
+      { column_name: 'assumptions', title: 'Assumptions', uidt: 'LongText' },
+      { column_name: 'estimated_effort', title: 'Estimated Effort', uidt: 'SingleLineText' },
+      { column_name: 'created_by_agent', title: 'Created By Agent', uidt: 'SingleLineText' }
+    ]
+  },
+  {
+    table_name: 'schedules',
+    title: 'Schedules',
+    columns: [
+      { column_name: 'project_id', title: 'Project ID', uidt: 'Number' },
+      { column_name: 'task_id', title: 'Task ID', uidt: 'Number' },
+      { column_name: 'plan_id', title: 'Plan ID', uidt: 'Number' },
+      { column_name: 'day_index', title: 'Day Index', uidt: 'Number' },
+      { column_name: 'scheduled_date', title: 'Scheduled Date', uidt: 'Date' },
+      { column_name: 'title', title: 'Title', uidt: 'SingleLineText' },
+      { column_name: 'description', title: 'Description', uidt: 'LongText' },
+      { column_name: 'expected_output', title: 'Expected Output', uidt: 'LongText' },
+      { column_name: 'status', title: 'Status', uidt: 'SingleLineText' }
+    ]
   }
 ];
 

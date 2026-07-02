@@ -47,7 +47,9 @@ async function executeTool(name: string, args: Record<string, string>, projectRo
     }
     case 'run_command': {
       try {
-        const { stdout, stderr } = await execAsync(args.command, { cwd: projectRoot, timeout: 15000 });
+        const childEnv = { ...process.env };
+        delete childEnv['PORT'];
+        const { stdout, stderr } = await execAsync(args.command, { cwd: projectRoot, timeout: 15000, env: childEnv });
         return ((stdout || '') + (stderr ? `\nSTDERR: ${stderr}` : '')).slice(0, 4000) || '(no output)';
       } catch (e: unknown) { return `Error: ${e instanceof Error ? e.message : String(e)}`; }
     }

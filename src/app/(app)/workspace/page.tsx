@@ -1068,7 +1068,7 @@ function ContextUsageBar({ usedTokens, contextLimit }: { usedTokens: number; con
         <div className={`h-full ${barColor} transition-all`} style={{ width: `${pct}%` }} />
       </div>
       <span className="font-mono flex-shrink-0">
-        {usedTokens > 0 ? `~${usedK}k / ${limitK}k` : 'Token usage unavailable'}
+        {usedTokens >= 0 ? `~${usedK}k / ${limitK}k` : 'Token usage unavailable'}
       </span>
       {label && <span className="text-[8px] text-[#e2c08d] flex-shrink-0">{label}</span>}
     </div>
@@ -1235,7 +1235,7 @@ export default function WorkspacePage() {
       setContextUsage(estTokens, ctxWindow);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effectiveProviderId, effectiveModelId]);
+  }, [effectiveProviderId, effectiveModelId, aiMessages]);
 
   const { data: fileTree = [], isLoading: isLoadingTree, refetch: refetchTree } = useQuery<FileNode[]>({
     queryKey: ['workspace-tree', projectPath],

@@ -53,9 +53,12 @@ interface WorkspaceState {
   contextUsedTokens: number;
   contextLimit: number;
   isAutoCompactEnabled: boolean;
+  pendingDiffs: Record<string, { original: string; modified: string }>;
 
   openFile: (path: string, name: string, content: string) => void;
   closeFile: (path: string) => void;
+  closeAllFiles: () => void;
+  closeOtherFiles: (path: string) => void;
   setActiveFile: (path: string) => void;
   updateFileContent: (path: string, content: string) => void;
   markFileSaved: (path: string) => void;
@@ -78,6 +81,8 @@ interface WorkspaceState {
   setApprovalMode: (mode: 'manual' | 'auto') => void;
   setContextUsage: (used: number, limit: number) => void;
   setAutoCompactEnabled: (enabled: boolean) => void;
+  setPendingDiff: (path: string, original: string, modified: string) => void;
+  clearPendingDiff: (path: string) => void;
 }
 
 const INITIAL_MESSAGES: AiMessage[] = [
@@ -102,6 +107,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       contextUsedTokens: 0,
       contextLimit: 128000,
       isAutoCompactEnabled: false,
+      pendingDiffs: {},
 
       openFile: (path, name, content) => {
         const existing = get().openFiles.find((f) => f.path === path);
@@ -123,6 +129,18 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             newActive = filtered.length > 0 ? filtered[filtered.length - 1].path : null;
           }
           return { openFiles: filtered, activeFilePath: newActive };
+        });
+      },
+
+      closeAllFiles: () => {
+        set({ openFiles: [], activeFilePath: null });
+      },
+
+      closeOtherFiles: (path) => {
+        set((state) => {
+          const target = state.openFiles.find((f) => f.path === path);
+          if (!target) return {};
+          return { openFiles: [target], activeFilePath: path };
         });
       },
 
@@ -296,6 +314,20 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       setContextUsage: (used, limit) => set({ contextUsedTokens: used, contextLimit: limit }),
 
       setAutoCompactEnabled: (enabled) => set({ isAutoCompactEnabled: enabled }),
+
+      setPendingDiff: (path, original, modified) => {
+        set((state) => ({
+          pendingDiffs: { ...state.pendingDiffs, [path]: { original, modified } },
+        }));
+      },
+
+      clearPendingDiff: (path) => {
+        set((state) => {
+          const next = { ...state.pendingDiffs };
+          delete next[path];
+          return { pendingDiffs: next };
+        });
+      },
     }),
     {
       name: 'vibeforge-workspace',

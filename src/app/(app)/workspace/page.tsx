@@ -683,13 +683,64 @@ function ToolCallStep({ step }: { step: AgentStep }) {
   const isEditFile = step.toolName === 'edit_file';
   const isWriteFile = step.toolName === 'write_file';
   const isOpen = !isFinished || !userCollapsed;
-  const { approvalMode } = useWorkspaceStore();
+  const { approvalMode, setPendingDiff, clearPendingDiff } = useWorkspaceStore();
 
   useEffect(() => {
     if (isOpen && endRef.current) {
       endRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
   }, [step.toolOutput, isOpen]);
+
+  useEffect(() => {
+    if (isFinished && isEditFile && !step.isError && editStatus === null) {
+      const path = String(step.toolArgs?.path || '');
+      const oldStr = String(step.toolArgs?.old_string || '');
+      const newStr = String(step.toolArgs?.new_string || '');
+      if (path && oldStr) {
+        // Here we simulate the original content by using the currently loaded active file content,
+        // replacing the newStr back with oldStr to get the full original string.
+        // For a more robust approach we'd fetch the exact file state, but this works well enough
+        // for live-preview in the main editor.
+        const currentContent = useWorkspaceStore.getState().openFiles.find(f => f.path === path)?.content || '';
+        if (currentContent.includes(newStr)) {
+          const original = currentContent.replace(newStr, oldStr);
+          setPendingDiff(path, original, currentContent);
+        }
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFinished, isEditFile, step.isError]);
+
+  const handleAcceptEdit = () => {
+    setEditStatus('applied');
+    if (step.toolArgs?.path) {
+      clearPendingDiff(String(step.toolArgs.path));
+    }
+  };
+
+  const handleRejectEdit = async () => {
+    if (!step.toolArgs?.path || !step.toolArgs?.old_string || !step.toolArgs?.new_string) return;
+    try {
+      const readRes = await fetch(`/api/workspace/file?path=${encodeURIComponent(String(step.toolArgs.path))}`);
+      if (!readRes.ok) throw new Error('Failed to read file');
+      const { content } = await readRes.json();
+      const reverted = content.replace(String(step.toolArgs.new_string), String(step.toolArgs.old_string));
+      await fetch('/api/workspace/file', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: String(step.toolArgs.path), content: reverted }),
+      });
+      setEditStatus('rejected');
+      clearPendingDiff(String(step.toolArgs.path));
+      // update the store open file content as well
+      useWorkspaceStore.getState().updateFileContent(String(step.toolArgs.path), reverted);
+      toast.info(`Reverted changes to ${String(step.toolArgs.path)}`);
+    } catch {
+      toast.error('Failed to revert changes');
+    }
+  };
+
+  const [showSideBySide, setShowSideBySide] = useState(false);
 
   const toolLabel = isEditFile
     ? 'Editing file'
@@ -708,27 +759,6 @@ function ToolCallStep({ step }: { step: AgentStep }) {
     : step.toolName === 'memory_write'
     ? 'Updating memory'
     : step.toolName;
-
-  const handleRejectEdit = async () => {
-    if (!step.toolArgs?.path || !step.toolArgs?.old_string || !step.toolArgs?.new_string) return;
-    try {
-      const readRes = await fetch(`/api/workspace/file?path=${encodeURIComponent(String(step.toolArgs.path))}`);
-      if (!readRes.ok) throw new Error('Failed to read file');
-      const { content } = await readRes.json();
-      const reverted = content.replace(String(step.toolArgs.new_string), String(step.toolArgs.old_string));
-      await fetch('/api/workspace/file', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: String(step.toolArgs.path), content: reverted }),
-      });
-      setEditStatus('rejected');
-      toast.info(`Reverted changes to ${String(step.toolArgs.path)}`);
-    } catch {
-      toast.error('Failed to revert changes');
-    }
-  };
-
-  const [showSideBySide, setShowSideBySide] = useState(false);
 
   return (
     <div className="border border-[#3a3a3a] rounded bg-[#252526] overflow-hidden">
@@ -802,7 +832,7 @@ function ToolCallStep({ step }: { step: AgentStep }) {
               {isFinished && !step.isError && !editStatus && (
                 <div className="flex items-center gap-2 mt-2 pt-2 border-t border-[#333]">
                   <button
-                    onClick={() => setEditStatus('applied')}
+                    onClick={handleAcceptEdit}
                     className="text-[10px] px-2 py-1 rounded bg-[#4ec9b0]/20 text-[#4ec9b0] hover:bg-[#4ec9b0]/30 transition-colors"
                   >
                     Accept
@@ -1075,6 +1105,8 @@ export default function WorkspacePage() {
     isAutoCompactEnabled,
     openFile,
     closeFile,
+    closeAllFiles,
+    closeOtherFiles,
     setActiveFile,
     updateFileContent,
     markFileSaved,
@@ -1094,6 +1126,7 @@ export default function WorkspacePage() {
     setApprovalMode,
     setContextUsage,
     setAutoCompactEnabled,
+    pendingDiffs,
   } = useWorkspaceStore();
 
   const [aiInput, setAiInput] = useState('');
@@ -1114,6 +1147,8 @@ export default function WorkspacePage() {
   const editorInstRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
   const decorationsRef = useRef<any>(null);
+
+  const [tabContextMenu, setTabContextMenu] = useState<{ path: string; x: number; y: number } | null>(null);
 
   const activeFile = openFiles.find((f) => f.path === activeFilePath);
 
@@ -1461,7 +1496,7 @@ export default function WorkspacePage() {
                   targetStep.isError = data.isError;
                   if (!data.isError && targetStep.toolArgs?.path) {
                     const toolName = targetStep.toolName || '';
-                    if (toolName === 'edit_file' || toolName === 'write_file' || toolName === 'read_file') {
+                    if (toolName === 'edit_file' || toolName === 'write_file') {
                       const fp = String(targetStep.toolArgs.path);
                       const fn = fp.split(/[/\\]/).pop() || 'file';
                       handleFileClick(fp, fn);
@@ -1728,7 +1763,7 @@ export default function WorkspacePage() {
                   targetStep.isError = data.isError;
                   if (!data.isError && targetStep.toolArgs?.path) {
                     const toolName = targetStep.toolName || '';
-                    if (toolName === 'edit_file' || toolName === 'write_file' || toolName === 'read_file') {
+                    if (toolName === 'edit_file' || toolName === 'write_file') {
                       const fp = String(targetStep.toolArgs.path);
                       const fn = fp.split(/[/\\]/).pop() || 'file';
                       handleFileClick(fp, fn);
@@ -1739,9 +1774,7 @@ export default function WorkspacePage() {
               } else if (eventType === 'content') {
                 fullContent += data.delta || '';
               } else if (eventType === 'usage') {
-                if (data.total) {
-                  setContextUsage(data.total, contextLimit);
-                }
+                if (data.total) setContextUsage(data.total, contextLimit);
               }
             } catch (e) {
               console.error('Failed to parse SSE JSON', e, dataStr);
@@ -1947,7 +1980,10 @@ export default function WorkspacePage() {
                 <div className="relative w-full h-full bg-[#1e1e1e]">
                   <div className="absolute inset-0 flex flex-col overflow-hidden">
                 {/* Editor Tabs */}
-                <div className="flex bg-[#252526] overflow-x-auto min-h-[35px] border-b border-[#1e1e1e] flex-shrink-0 scrollbar-none">
+                <div
+                  className="flex bg-[#252526] overflow-x-auto min-h-[35px] border-b border-[#1e1e1e] flex-shrink-0 scrollbar-none"
+                  onClick={() => setTabContextMenu(null)}
+                >
                   {openFiles.map((file) => {
                     const isTabActive = file.path === activeFilePath;
                     return (
@@ -1959,6 +1995,10 @@ export default function WorkspacePage() {
                             : 'text-[#969696] hover:bg-[#2d2d2d]'
                         }`}
                         onClick={() => setActiveFile(file.path)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          setTabContextMenu({ path: file.path, x: e.clientX, y: e.clientY });
+                        }}
                       >
                         {file.isDirty && (
                           <Circle className="size-2 fill-current text-[#e8e8e8]" />
@@ -1983,13 +2023,47 @@ export default function WorkspacePage() {
                   )}
                 </div>
 
+                {/* Tab Context Menu */}
+                {tabContextMenu && (
+                  <div
+                    className="fixed z-50 bg-[#252526] border border-[#3a3a3a] rounded shadow-xl text-xs text-[#cccccc] py-1 min-w-[180px]"
+                    style={{ top: tabContextMenu.y, left: tabContextMenu.x }}
+                    onMouseLeave={() => setTabContextMenu(null)}
+                  >
+                    {[
+                      { label: 'Close', action: () => { closeFile(tabContextMenu.path); setTabContextMenu(null); } },
+                      { label: 'Close Others', action: () => { closeOtherFiles(tabContextMenu.path); setTabContextMenu(null); } },
+                      { label: 'Close All', action: () => { closeAllFiles(); setTabContextMenu(null); } },
+                      null, // divider
+                      { label: 'Copy Path', action: () => { navigator.clipboard.writeText(tabContextMenu.path); setTabContextMenu(null); } },
+                    ].map((item, idx) =>
+                      item === null ? (
+                        <div key={idx} className="h-px bg-[#3a3a3a] my-1" />
+                      ) : (
+                        <button
+                          key={item.label}
+                          className="w-full text-left px-3 py-1.5 hover:bg-[#094771] transition-colors"
+                          onClick={item.action}
+                        >
+                          {item.label}
+                        </button>
+                      )
+                    )}
+                  </div>
+                )}
+
                 {/* Breadcrumb / File path */}
                 {activeFile && (
                   <div className="flex items-center gap-1 px-3 py-1 bg-[#1e1e1e] border-b border-[#2d2d2d] flex-shrink-0">
                     <span className="text-[11px] text-[#888] font-mono truncate">
                       {activeFile.path}
                     </span>
-                    {activeFile.isDirty && (
+                    {pendingDiffs[activeFile.path] && (
+                      <span className="ml-2 text-[9px] bg-[#4ec9b0]/20 text-[#4ec9b0] px-1.5 py-0.5 rounded font-mono">
+                        AI Diff Preview
+                      </span>
+                    )}
+                    {activeFile.isDirty && !pendingDiffs[activeFile.path] && (
                       <span className="ml-auto text-[10px] text-[#f0ad4e] flex items-center gap-1 flex-shrink-0">
                         <Circle className="size-1.5 fill-current" /> Unsaved
                       </span>
@@ -2000,34 +2074,53 @@ export default function WorkspacePage() {
                 {/* Editor Content */}
                 <div className="flex-1 min-h-0 min-w-0 relative">
                   {activeFile ? (
-                    <MonacoEditor
-                      height="100%"
-                      language={getLanguage(activeFile.name)}
-                      theme="vs-dark"
-                      value={activeFile.content}
-                      onChange={(value) => {
-                        if (value !== undefined) {
-                          updateFileContent(activeFile.path, value);
-                        }
-                      }}
-                      onMount={(editor, monaco) => {
-                        editorInstRef.current = editor;
-                        monacoRef.current = monaco;
-                      }}
-                      options={{
-                        minimap: { enabled: true },
-                        fontSize: 13,
-                        fontFamily: "'JetBrains Mono', 'Geist Mono', 'Fira Code', Menlo, monospace",
-                        lineNumbers: 'on',
-                        scrollBeyondLastLine: false,
-                        automaticLayout: true,
-                        wordWrap: 'on',
-                        tabSize: 2,
-                        renderWhitespace: 'selection',
-                        bracketPairColorization: { enabled: true },
-                        lineHeight: 20,
-                      }}
-                    />
+                    pendingDiffs[activeFile.path] ? (
+                      <MonacoDiffEditor
+                        height="100%"
+                        language={getLanguage(activeFile.name)}
+                        theme="vs-dark"
+                        original={pendingDiffs[activeFile.path].original}
+                        modified={pendingDiffs[activeFile.path].modified}
+                        options={{
+                          readOnly: true,
+                          minimap: { enabled: false },
+                          fontSize: 13,
+                          fontFamily: "'JetBrains Mono', 'Geist Mono', 'Fira Code', Menlo, monospace",
+                          renderSideBySide: true,
+                          scrollBeyondLastLine: false,
+                          automaticLayout: true,
+                        }}
+                      />
+                    ) : (
+                      <MonacoEditor
+                        height="100%"
+                        language={getLanguage(activeFile.name)}
+                        theme="vs-dark"
+                        value={activeFile.content}
+                        onChange={(value) => {
+                          if (value !== undefined) {
+                            updateFileContent(activeFile.path, value);
+                          }
+                        }}
+                        onMount={(editor, monaco) => {
+                          editorInstRef.current = editor;
+                          monacoRef.current = monaco;
+                        }}
+                        options={{
+                          minimap: { enabled: true },
+                          fontSize: 13,
+                          fontFamily: "'JetBrains Mono', 'Geist Mono', 'Fira Code', Menlo, monospace",
+                          lineNumbers: 'on',
+                          scrollBeyondLastLine: false,
+                          automaticLayout: true,
+                          wordWrap: 'on',
+                          tabSize: 2,
+                          renderWhitespace: 'selection',
+                          bracketPairColorization: { enabled: true },
+                          lineHeight: 20,
+                        }}
+                      />
+                    )
                   ) : (
                     <div className="flex flex-col items-center justify-center h-full w-full p-4 text-center text-[#5a5a5a] select-none">
                       <Files className="size-16 mb-4 opacity-20 flex-shrink-0" />

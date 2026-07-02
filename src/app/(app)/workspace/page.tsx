@@ -108,7 +108,8 @@ import {
   MoreVertical,
   Pencil,
   RotateCcw,
-  Brain
+  Brain,
+  Bookmark
 } from 'lucide-react';
 
 interface GitChange {
@@ -720,6 +721,18 @@ function InlineDiffViewer({ oldStr, newStr }: { oldStr: string; newStr: string }
   );
 }
 
+// ─────────────────────────────────────────────────────────
+// Chat activity divider (Bookmark icon + horizontal rule)
+// ─────────────────────────────────────────────────────────
+function ActivityDivider() {
+  return (
+    <div className="flex items-center gap-1.5 my-2">
+      <Bookmark className="size-2.5 text-[#555] shrink-0" />
+      <div className="flex-1 border-t border-dashed border-[#333]" />
+    </div>
+  );
+}
+
 function ToolCallStep({ step }: { step: AgentStep }) {
   const [expanded, setExpanded] = useState(false);
   const [editStatus, setEditStatus] = useState<'applied' | 'rejected' | null>(null);
@@ -760,10 +773,7 @@ function ToolCallStep({ step }: { step: AgentStep }) {
   const handleAccept = () => {
     setEditStatus('applied');
     const path = String(step.toolArgs?.path || '');
-    if (path) {
-      clearPendingDiff(path);
-      useWorkspaceStore.getState().markFileTag(path, null);
-    }
+    if (path) { clearPendingDiff(path); useWorkspaceStore.getState().markFileTag(path, null); }
   };
 
   const handleReject = async () => {
@@ -787,43 +797,72 @@ function ToolCallStep({ step }: { step: AgentStep }) {
   const command = String(step.toolArgs?.command || '');
   const isRunning = !isFinished;
 
-  // ─── EDIT / WRITE FILE ─────────────────────────────────────────
+  // ─── EDIT / WRITE FILE ──────────────────────────────────
   if (isEditFile || isWriteFile) {
-    const ActionIcon = isEditFile ? Pencil : FilePlus;
-    const actionLabel = isEditFile ? 'Edit' : 'Create';
+    const actionIcon = isEditFile ? <Pencil className="size-3 text-[#4ec9b0] shrink-0" /> : <FilePlus className="size-3 text-[#4ec9b0] shrink-0" />;
+    const actionLabel = isEditFile ? 'AI wants to edit this file' : 'AI wants to create this file';
+    const oldLines = String(step.toolArgs?.old_string || '').split('\n').length;
+    const newLines = String(step.toolArgs?.new_string || step.toolArgs?.content || '').split('\n').length;
+
     return (
-      <div className="text-[9px] font-mono">
+      <div className="text-[10px] font-mono">
+        {/* Header: icon + bold label */}
         <div className="flex items-center gap-1.5 py-0.5">
-          {isRunning ? (
-            <Loader2 className="size-2.5 animate-spin text-[#007acc] shrink-0" />
-          ) : editStatus === 'rejected' ? (
-            <RotateCcw className="size-2.5 text-[#e2c08d] shrink-0" />
-          ) : step.isError ? (
-            <XCircle className="size-2.5 text-[#c74e39] shrink-0" />
-          ) : editStatus === 'applied' ? (
-            <CheckCircle2 className="size-2.5 text-[#4ec9b0] shrink-0" />
-          ) : (
-            <ActionIcon className="size-2.5 text-[#888] shrink-0" />
-          )}
-          <span className={isRunning ? 'vibeforge-wave-text' : 'text-[#888]'}>{actionLabel}</span>
-          {editStatus && <span className={editStatus === 'rejected' ? 'text-[#e2c08d]' : 'text-[#4ec9b0]'}>· {editStatus}</span>}
+          {isRunning ? <Loader2 className="size-3 animate-spin text-[#007acc] shrink-0" /> : editStatus === 'rejected' ? <RotateCcw className="size-3 text-[#e2c08d] shrink-0" /> : step.isError ? <XCircle className="size-3 text-[#c74e39] shrink-0" /> : editStatus === 'applied' ? <CheckCircle2 className="size-3 text-[#4ec9b0] shrink-0" /> : actionIcon}
+          <span className={`font-semibold ${isRunning ? 'vibeforge-wave-text' : 'text-[#cccccc]'}`}>{actionLabel}:</span>
+          {editStatus && <span className={`ml-1 text-[9px] ${editStatus === 'rejected' ? 'text-[#e2c08d]' : 'text-[#4ec9b0]'}`}>{editStatus}</span>}
         </div>
 
-        <details className="ml-4" onToggle={(e) => setExpanded((e.target as HTMLDetailsElement).open)}>
-          <summary className="cursor-pointer flex items-center gap-1 text-[9px] text-[#666] hover:text-[#aaa] transition-colors py-0.5 list-none">
-            <ChevronRight className={`size-2 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} />
-            <FileCode className="size-2.5 shrink-0 text-[#519aba]" />
+        {/* Accordion: filename → expand for path + code */}
+        <details className="ml-5" onToggle={(e) => setExpanded((e.target as HTMLDetailsElement).open)}>
+          <summary className="cursor-pointer flex items-center gap-1.5 text-[9px] text-[#888] hover:text-[#cccccc] transition-colors py-0.5 list-none">
+            <ChevronRight className={`size-2.5 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+            <FileCode className="size-3 text-[#519aba] shrink-0" />
             <span className="text-[#cccccc]">{fileName}</span>
+            {isEditFile && !isRunning && (
+              <span className="text-[#555] ml-1">{oldLines} → {newLines} lines</span>
+            )}
           </summary>
-          <div className="pl-4 text-[#555] py-0.5 truncate">{filePath}</div>
+          <div className="pl-4 pt-1 flex flex-col gap-1">
+            <div className="text-[#555] truncate py-0.5 text-[9px]">{filePath}</div>
+            {/* Show code diff preview */}
+            {isFinished && (isEditFile ? !!step.toolArgs?.old_string : !!step.toolArgs?.content) && (
+              <div className="border border-[#333] rounded overflow-hidden text-[9px]">
+                {isEditFile ? (
+                  <>
+                    {String(step.toolArgs?.old_string || '').split('\n').slice(0, 6).map((line, i) => (
+                      <div key={`old-${i}`} className="flex bg-[#c74e39]/8 px-2 py-px">
+                        <span className="w-3 text-[#c74e39]/60 shrink-0">-</span>
+                        <span className="text-[#c74e39]/80 whitespace-pre truncate">{line}</span>
+                      </div>
+                    ))}
+                    {String(step.toolArgs?.new_string || '').split('\n').slice(0, 6).map((line, i) => (
+                      <div key={`new-${i}`} className="flex bg-[#4ec9b0]/8 px-2 py-px">
+                        <span className="w-3 text-[#4ec9b0]/60 shrink-0">+</span>
+                        <span className="text-[#4ec9b0]/80 whitespace-pre truncate">{line}</span>
+                      </div>
+                    ))}
+                  </>
+                ) : (
+                  String(step.toolArgs?.content || '').split('\n').slice(0, 8).map((line, i) => (
+                    <div key={i} className="flex bg-[#4ec9b0]/8 px-2 py-px">
+                      <span className="w-3 text-[#4ec9b0]/60 shrink-0">+</span>
+                      <span className="text-[#4ec9b0]/80 whitespace-pre truncate">{line}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
         </details>
 
+        {/* Approve / Reject for manual mode */}
         {isFinished && !step.isError && !editStatus && approvalMode !== 'auto' && (
-          <div className="flex items-center gap-2 ml-4 mt-0.5">
-            <button onClick={handleAccept} className="text-[9px] px-2 py-0.5 rounded-sm bg-[#4ec9b0]/15 text-[#4ec9b0] hover:bg-[#4ec9b0]/25 transition-colors border border-[#4ec9b0]/30 flex items-center gap-1">
+          <div className="flex items-center gap-2 ml-5 mt-1">
+            <button onClick={handleAccept} className="text-[9px] px-2 py-0.5 rounded bg-[#4ec9b0]/15 text-[#4ec9b0] hover:bg-[#4ec9b0]/25 border border-[#4ec9b0]/30 flex items-center gap-1 transition-colors">
               <CheckCircle2 className="size-2.5" />Approve
             </button>
-            <button onClick={handleReject} className="text-[9px] px-2 py-0.5 rounded-sm bg-[#c74e39]/15 text-[#c74e39] hover:bg-[#c74e39]/25 transition-colors border border-[#c74e39]/30 flex items-center gap-1">
+            <button onClick={handleReject} className="text-[9px] px-2 py-0.5 rounded bg-[#c74e39]/15 text-[#c74e39] hover:bg-[#c74e39]/25 border border-[#c74e39]/30 flex items-center gap-1 transition-colors">
               <XCircle className="size-2.5" />Reject
             </button>
           </div>
@@ -832,15 +871,18 @@ function ToolCallStep({ step }: { step: AgentStep }) {
     );
   }
 
-  // ─── READ FILE ─────────────────────────────────────────────────
+  // ─── READ FILE ─────────────────────────────────────────
   if (step.toolName === 'read_file') {
+    const lineCount = step.toolOutput ? step.toolOutput.split('\n').length : 0;
     return (
       <div className="text-[9px] font-mono">
         <div className="flex items-center gap-1.5 py-0.5">
           {isRunning ? <Loader2 className="size-2.5 animate-spin text-[#007acc] shrink-0" /> : <FileText className="size-2.5 text-[#888] shrink-0" />}
-          <span className={isRunning ? 'vibeforge-wave-text' : 'text-[#666]'}>{isRunning ? 'reading' : 'read'}</span>
           <FileCode className="size-2.5 text-[#519aba] shrink-0" />
-          <span className="text-[#cccccc] truncate max-w-[200px]">{filePath}</span>
+          <span className={`truncate max-w-[200px] ${isRunning ? 'vibeforge-wave-text' : 'text-[#cccccc]'}`}>{filePath}</span>
+          {isFinished && lineCount > 0 && (
+            <span className="text-[#555] ml-1">lines 1–{lineCount}</span>
+          )}
           {isFinished && step.toolOutput && (
             <button onClick={() => setExpanded(!expanded)} className="ml-auto text-[#555] hover:text-[#888]">
               <ChevronRight className={`size-2.5 transition-transform ${expanded ? 'rotate-90' : ''}`} />
@@ -848,15 +890,15 @@ function ToolCallStep({ step }: { step: AgentStep }) {
           )}
         </div>
         {expanded && step.toolOutput && (
-          <div className="ml-4 text-[9px] text-[#555] bg-[#1a1a1a] border border-[#333] rounded p-1.5 mt-0.5 max-h-24 overflow-y-auto whitespace-pre-wrap">
-            {step.toolOutput.slice(0, 400)}{step.toolOutput.length > 400 ? '…' : ''}
+          <div className="ml-4 text-[9px] text-[#666] bg-[#1a1a1a] border border-[#333] rounded p-1.5 mt-0.5 max-h-24 overflow-y-auto whitespace-pre-wrap">
+            {step.toolOutput.slice(0, 600)}{step.toolOutput.length > 600 ? '\n…' : ''}
           </div>
         )}
       </div>
     );
   }
 
-  // ─── LIST DIRECTORY ────────────────────────────────────────────
+  // ─── LIST DIRECTORY ────────────────────────────────────
   if (step.toolName === 'list_directory') {
     const lines = step.toolOutput ? step.toolOutput.trim().split('\n') : [];
     const preview = lines.slice(0, 5);
@@ -864,9 +906,8 @@ function ToolCallStep({ step }: { step: AgentStep }) {
       <div className="text-[9px] font-mono">
         <div className="flex items-center gap-1.5 py-0.5">
           {isRunning ? <Loader2 className="size-2.5 animate-spin text-[#007acc] shrink-0" /> : <FolderSearch className="size-2.5 text-[#888] shrink-0" />}
-          <span className={isRunning ? 'vibeforge-wave-text' : 'text-[#666]'}>{isRunning ? 'visiting' : 'visited'}</span>
           <FolderOpen className="size-2.5 text-[#dcb67a] shrink-0" />
-          <span className="text-[#cccccc] truncate max-w-[200px]">{filePath}</span>
+          <span className={`truncate max-w-[200px] ${isRunning ? 'vibeforge-wave-text' : 'text-[#cccccc]'}`}>{filePath}</span>
           {isFinished && preview.length > 0 && (
             <button onClick={() => setExpanded(!expanded)} className="ml-auto text-[#555] hover:text-[#888]">
               <ChevronRight className={`size-2.5 transition-transform ${expanded ? 'rotate-90' : ''}`} />
@@ -879,7 +920,7 @@ function ToolCallStep({ step }: { step: AgentStep }) {
               const isDir = line.includes('[DIR]');
               const clean = line.replace(/^\[(DIR|FILE)\]\s*/, '').trim();
               return (
-                <div key={i} className="flex items-center gap-1 text-[#666]">
+                <div key={i} className="flex items-center gap-1 text-[#777]">
                   {isDir ? <Folder className="size-2 text-[#dcb67a] shrink-0" /> : <FileCode className="size-2 text-[#519aba] shrink-0" />}
                   <span>{clean}</span>
                 </div>
@@ -892,46 +933,55 @@ function ToolCallStep({ step }: { step: AgentStep }) {
     );
   }
 
-  // ─── RUN COMMAND ──────────────────────────────────────────────
+  // ─── RUN COMMAND ───────────────────────────────────────
   if (step.toolName === 'run_command') {
+    const statusColor = step.isError ? '#c74e39' : isFinished ? '#4ec9b0' : '#e2c08d';
+    const statusLabel = step.isError ? 'failed' : isFinished ? 'completed' : 'running';
     return (
       <div className="text-[9px] font-mono">
+        {/* Header */}
         <div className="flex items-center gap-1.5 py-0.5">
-          {isRunning ? <Loader2 className="size-2.5 animate-spin text-[#007acc] shrink-0" /> : step.isError ? <XCircle className="size-2.5 text-[#c74e39] shrink-0" /> : <Terminal className="size-2.5 text-[#4ec9b0] shrink-0" />}
-          <span className={isRunning ? 'vibeforge-wave-text' : 'text-[#666]'}>{isRunning ? 'running' : 'ran'}</span>
-          <span className="text-[#4ec9b0] truncate max-w-[200px]">$ {command}</span>
-          {isFinished && step.toolOutput && (
-            <button onClick={() => setExpanded(!expanded)} className="ml-auto text-[#555] hover:text-[#888]">
-              <ChevronRight className={`size-2.5 transition-transform ${expanded ? 'rotate-90' : ''}`} />
-            </button>
+          {isRunning ? <Loader2 className="size-2.5 animate-spin text-[#007acc] shrink-0" /> : <Terminal className="size-2.5 text-[#888] shrink-0" />}
+          <span className={`font-semibold ${isRunning ? 'vibeforge-wave-text' : 'text-[#cccccc]'}`}>AI wants to execute this command</span>
+        </div>
+
+        {/* Command container */}
+        <div className="ml-3 mt-1 border border-[#3a3a3a] rounded overflow-hidden">
+          {/* Container header: status dot + label + command */}
+          <div className="flex items-center gap-2 px-2.5 py-1.5 bg-[#252526] border-b border-[#333]">
+            <span className="size-2 rounded-full shrink-0" style={{ backgroundColor: statusColor }} />
+            <span className="text-[9px] capitalize" style={{ color: statusColor }}>{statusLabel}</span>
+            <span className="text-[#4ec9b0] font-mono truncate flex-1 text-[9px]">$ {command}</span>
+          </div>
+
+          {/* Terminal output: fixed height 120px, scrollable */}
+          {(step.toolOutput || isRunning) && (
+            <div className="bg-[#0e0e0e] h-[120px] overflow-y-auto p-2 whitespace-pre-wrap text-[9px] font-mono leading-relaxed" style={{ color: step.isError ? '#f48771' : '#4ec9b0' }}>
+              {step.toolOutput || (isRunning ? <span className="vibeforge-wave-text">Executing...</span> : null)}
+            </div>
           )}
         </div>
-        {expanded && step.toolOutput && (
-          <div className="ml-4 text-[9px] text-[#555] bg-[#0e0e0e] border border-[#333] rounded p-1.5 mt-0.5 max-h-32 overflow-y-auto whitespace-pre-wrap">
-            {step.toolOutput}
-          </div>
-        )}
       </div>
     );
   }
 
-  // ─── MEMORY ───────────────────────────────────────────────────
+  // ─── MEMORY ────────────────────────────────────────────
   if (['memory_read', 'memory_list', 'memory_write'].includes(step.toolName || '')) {
     const label = step.toolName === 'memory_write' ? 'updated memory' : step.toolName === 'memory_read' ? 'read memory' : 'indexed memory';
     return (
       <div className="text-[9px] font-mono flex items-center gap-1.5 py-0.5">
         {isRunning ? <Loader2 className="size-2.5 animate-spin text-[#007acc] shrink-0" /> : <Brain className="size-2.5 text-[#888] shrink-0" />}
-        <span className={isRunning ? 'vibeforge-wave-text' : 'text-[#666]'}>{label}</span>
+        <span className={isRunning ? 'vibeforge-wave-text' : 'text-[#777]'}>{label}</span>
         {filePath && <span className="text-[#cccccc] truncate max-w-[180px]">{filePath}</span>}
       </div>
     );
   }
 
-  // ─── FALLBACK ─────────────────────────────────────────────────
+  // ─── FALLBACK ──────────────────────────────────────────
   return (
     <div className="text-[9px] font-mono flex items-center gap-1.5 py-0.5">
       {isRunning ? <Loader2 className="size-2.5 animate-spin text-[#007acc] shrink-0" /> : <Cpu className="size-2.5 text-[#888] shrink-0" />}
-      <span className={isRunning ? 'vibeforge-wave-text' : 'text-[#666]'}>{step.toolName}</span>
+      <span className={isRunning ? 'vibeforge-wave-text' : 'text-[#777]'}>{step.toolName}</span>
       {filePath && <span className="text-[#cccccc] truncate max-w-[180px]">{filePath}</span>}
     </div>
   );
@@ -984,32 +1034,32 @@ function AiMessageBubble({ role, content, steps, model, provider }: { role: stri
         {steps && steps.length > 0 && (() => {
           const allFinished = steps.every(s => s.type === 'thought' || !!s.toolOutput);
           const toolSteps = steps.filter(s => s.type === 'tool_call');
-          
+          const readSteps = toolSteps.filter(s => s.toolName === 'read_file');
+          const searchSteps = toolSteps.filter(s => s.toolName === 'list_directory');
+
+          // After everything is done and there's a response text → collapse to "Show output"
           if (allFinished && content && toolSteps.length > 0) {
             return (
               <details className="mx-3 mt-2 mb-1 group">
                 <summary className="flex items-center gap-1.5 text-[9px] text-[#555] cursor-pointer hover:text-[#888] transition-colors select-none list-none">
                   <ChevronRight className="size-2.5 shrink-0 group-open:rotate-90 transition-transform" />
                   <span>Show output</span>
-                  <span className="text-[#444]">({toolSteps.length} {toolSteps.length === 1 ? 'step' : 'steps'})</span>
+                  <span className="text-[#444]">
+                    {readSteps.length > 0 && `${readSteps.length} file${readSteps.length > 1 ? 's' : ''}`}
+                    {readSteps.length > 0 && searchSteps.length > 0 && ' · '}
+                    {searchSteps.length > 0 && `${searchSteps.length} folder${searchSteps.length > 1 ? 's' : ''}`}
+                    {(readSteps.length === 0 && searchSteps.length === 0) && `${toolSteps.length} step${toolSteps.length > 1 ? 's' : ''}`}
+                  </span>
                 </summary>
                 <div className="flex flex-col gap-0 mt-1 pl-1">
                   {steps.map((step, idx) => {
-                    if (step.type === 'thought') {
-                      return <div key={idx} className="text-[9px] text-[#555] italic py-0.5 truncate">{step.text?.slice(0, 60)}</div>;
-                    }
-                    if (step.type === 'tool_call') {
-                      return (
-                        <div key={idx}>
-                          <div className="flex items-center gap-1.5 my-0.5">
-                            <div className="flex-1 h-px bg-[#333]" />
-                            <span className="text-[8px] text-[#555] uppercase tracking-widest shrink-0">{step.toolName === 'read_file' ? 'read' : step.toolName === 'list_directory' ? 'visit' : step.toolName === 'edit_file' ? 'edit' : step.toolName === 'write_file' ? 'create' : step.toolName === 'run_command' ? 'command' : step.toolName?.replace('memory_', '') || 'tool'}</span>
-                            <div className="flex-1 h-px bg-[#333]" />
-                          </div>
-                          <ToolCallStep step={step} />
-                        </div>
-                      );
-                    }
+                    if (step.type === 'thought') return <div key={idx} className="text-[9px] text-[#555] italic py-0.5 truncate">{step.text?.slice(0, 60)}</div>;
+                    if (step.type === 'tool_call') return (
+                      <div key={idx}>
+                        <ActivityDivider />
+                        <ToolCallStep step={step} />
+                      </div>
+                    );
                     return null;
                   })}
                 </div>
@@ -1017,25 +1067,24 @@ function AiMessageBubble({ role, content, steps, model, provider }: { role: stri
             );
           }
 
+          // Live streaming view
           return (
             <div className="flex flex-col mx-3 mt-2 gap-0">
               {steps.map((step, idx) => {
                 if (step.type === 'thought') {
                   const isActive = !step.toolOutput && idx === steps.length - 1;
                   return (
-                    <div key={idx} className="text-[9px] py-0.5">
-                      <span className={isActive ? 'vibeforge-wave-text' : 'text-[#555] italic'}>{step.text ? step.text.slice(0, 80) + (step.text.length > 80 ? '...' : '') : (isActive ? 'Thinking...' : '')}</span>
+                    <div key={idx} className="text-[9px] py-1">
+                      <span className={isActive ? 'vibeforge-wave-text' : 'text-[#555] italic'}>
+                        {step.text ? step.text.slice(0, 100) + (step.text.length > 100 ? '...' : '') : (isActive ? 'Thinking...' : '')}
+                      </span>
                     </div>
                   );
                 }
                 if (step.type === 'tool_call') {
                   return (
                     <div key={idx}>
-                      <div className="flex items-center gap-1.5 my-1">
-                        <div className="flex-1 h-px bg-[#333]" />
-                        <span className="text-[8px] text-[#555] uppercase tracking-widest shrink-0">{step.toolName === 'read_file' ? 'read' : step.toolName === 'list_directory' ? 'visit' : step.toolName === 'edit_file' ? 'edit' : step.toolName === 'write_file' ? 'create' : step.toolName === 'run_command' ? 'command' : step.toolName?.replace('memory_', '') || 'tool'}</span>
-                        <div className="flex-1 h-px bg-[#333]" />
-                      </div>
+                      <ActivityDivider />
                       <ToolCallStep step={step} />
                     </div>
                   );
@@ -2175,15 +2224,12 @@ export default function WorkspacePage() {
                         {file.isDeleted && !file.tag && (
                           <span className="size-1.5 rounded-full bg-[#c74e39] flex-shrink-0" />
                         )}
-                        {file.tag && (
-                          <span className={`text-[8px] px-1 py-px rounded-sm shrink-0 font-medium ${file.tag === 'created' ? 'bg-[#4ec9b0]/15 text-[#4ec9b0]' : 'bg-[#e2c08d]/15 text-[#e2c08d]'}`}>
-                            {file.tag}
-                          </span>
-                        )}
                         {file.isDirty && !file.isDeleted && !file.tag && (
                           <Circle className="size-2 fill-current text-[#e8e8e8]" />
                         )}
-                        <span className={`text-xs py-1.5 ${file.isDeleted && !file.tag ? 'line-through text-[#c74e39] opacity-70' : ''}`}>{file.name}</span>
+                        <span className={`text-xs py-1.5 ${file.isDeleted && !file.tag ? 'line-through text-[#c74e39] opacity-70' : ''}`}>
+                          {file.name}{file.tag === 'created' ? ': New File' : file.tag === 'edited' ? ': Editing' : ''}
+                        </span>
                         <button
                           className="hover:bg-[#333333] rounded p-0.5 transition-colors ml-1"
                           onClick={(e) => {

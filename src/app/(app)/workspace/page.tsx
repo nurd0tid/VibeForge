@@ -198,10 +198,21 @@ function GitSourceControl({ projectPath, defaultBranch }: { projectPath: string;
 
   const getStatusIcon = (status: string) => {
     const s = status.trim();
+    if (s.includes('D')) return <FileMinus className="size-3.5 text-[#c74e39]" />;
     if (s.includes('M')) return <FilePlus className="size-3.5 text-[#e2c08d]" />;
     if (s.includes('A') || s.includes('?')) return <FilePlus className="size-3.5 text-[#73c991]" />;
-    if (s.includes('D')) return <FileMinus className="size-3.5 text-[#c74e39]" />;
+    if (s.includes('R')) return <FilePlus className="size-3.5 text-[#4fc1ff]" />;
     return <FileQuestion className="size-3.5 text-[#888]" />;
+  };
+
+  const getStatusBadge = (status: string): { letter: string; color: string } => {
+    const s = status.trim();
+    if (s.includes('D')) return { letter: 'D', color: '#c74e39' };
+    if (s.includes('M')) return { letter: 'M', color: '#e2c08d' };
+    if (s.includes('A')) return { letter: 'A', color: '#73c991' };
+    if (s.includes('R')) return { letter: 'R', color: '#4fc1ff' };
+    if (s === '??') return { letter: 'U', color: '#73c991' };
+    return { letter: s[0] || '?', color: '#888' };
   };
 
   const getStatusLabel = (status: string) => {
@@ -293,7 +304,7 @@ function GitSourceControl({ projectPath, defaultBranch }: { projectPath: string;
                   <div key={`s-${i}`} className="flex items-center gap-2 px-3 py-1 hover:bg-[#2a2d2e] transition-colors cursor-pointer group">
                     {getStatusIcon(change.status)}
                     <span className="text-xs text-[#cccccc] truncate flex-1 font-mono">{change.file}</span>
-                    <span className="text-[9px] text-[#4ec9b0] font-bold">{change.status[0]}</span>
+                    <span className="text-[9px] font-bold font-mono" style={{ color: getStatusBadge(change.status).color }}>{getStatusBadge(change.status).letter}</span>
                   </div>
                 ))}
               </>
@@ -308,7 +319,7 @@ function GitSourceControl({ projectPath, defaultBranch }: { projectPath: string;
                   <div key={`u-${i}`} className="flex items-center gap-2 px-3 py-1 hover:bg-[#2a2d2e] transition-colors cursor-pointer group">
                     {getStatusIcon(change.status)}
                     <span className="text-xs text-[#cccccc] truncate flex-1 font-mono">{change.file}</span>
-                    <span className="text-[9px] text-[#e2c08d] font-bold opacity-0 group-hover:opacity-100">{getStatusLabel(change.status)}</span>
+                    <span className="text-[9px] font-bold font-mono" style={{ color: getStatusBadge(change.status).color }}>{getStatusBadge(change.status).letter}</span>
                   </div>
                 ))}
               </>
@@ -323,7 +334,7 @@ function GitSourceControl({ projectPath, defaultBranch }: { projectPath: string;
                   <div key={`ut-${i}`} className="flex items-center gap-2 px-3 py-1 hover:bg-[#2a2d2e] transition-colors cursor-pointer group">
                     <FilePlus className="size-3.5 text-[#73c991]" />
                     <span className="text-xs text-[#cccccc] truncate flex-1 font-mono">{change.file}</span>
-                    <span className="text-[9px] text-[#73c991]">U</span>
+                    <span className="text-[9px] font-bold font-mono text-[#73c991]">U</span>
                   </div>
                 ))}
               </>

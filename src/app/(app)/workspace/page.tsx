@@ -653,7 +653,7 @@ function AiMessageBubble({ role, content, steps, model }: { role: string; conten
         )}
 
         {content && (
-          <div className="px-3 py-2 prose prose-invert prose-xs max-w-none [&>*]:text-[#cccccc] [&>code]:text-[#ce9178] [&>pre]:bg-[#1e1e1e] [&>pre]:border [&>pre]:border-[#3a3a3a] [&>p]:my-1 [&>ul]:my-1 [&>ol]:my-1 [&>h1]:text-[#4ec9b0] [&>h2]:text-[#4ec9b0] [&>h3]:text-[#4ec9b0]">
+          <div className="px-3 py-2 prose prose-invert prose-ide max-w-none text-[#cccccc] [&_code]:text-[#ce9178] [&_pre]:bg-[#1e1e1e] [&_pre]:border [&_pre]:border-[#3a3a3a] [&_h1]:text-[#4ec9b0] [&_h2]:text-[#4ec9b0] [&_h3]:text-[#4ec9b0] [&_blockquote]:border-[#3a3a3a]">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
           </div>
         )}

@@ -129,3 +129,44 @@
     @apply font-sans;
   }
 }
+
+/* AI Assistant chat markdown — match IDE font sizing */
+.prose-ide {
+  font-size: 12px !important;
+  line-height: 1.6 !important;
+}
+.prose-ide p,
+.prose-ide ul,
+.prose-ide ol,
+.prose-ide li,
+.prose-ide td,
+.prose-ide th,
+.prose-ide blockquote,
+.prose-ide dd,
+.prose-ide dt {
+  font-size: 12px !important;
+  line-height: 1.6 !important;
+}
+.prose-ide h1 { font-size: 14px !important; font-weight: 600 !important; }
+.prose-ide h2 { font-size: 13px !important; font-weight: 600 !important; }
+.prose-ide h3,
+.prose-ide h4 { font-size: 12px !important; font-weight: 600 !important; }
+.prose-ide code:not(pre code) {
+  font-size: 11px !important;
+  padding: 1px 4px !important;
+  border-radius: 3px !important;
+}
+.prose-ide pre {
+  font-size: 11px !important;
+  line-height: 1.5 !important;
+  padding: 8px 10px !important;
+}
+.prose-ide table {
+  font-size: 11px !important;
+}
+.prose-ide img {
+  max-width: 100% !important;
+}
+.prose-ide strong {
+  font-weight: 600 !important;
+}

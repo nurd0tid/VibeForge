@@ -269,6 +269,7 @@ When you need to use a tool, output the <tool_use> block. The system will execut
           ];
 
           const MAX_ITERATIONS = 8;
+          const MAX_RETRIES = 2;
           let iteration = 0;
           let fullOutputText = '';
           let totalInputTokens = 0;
@@ -287,12 +288,30 @@ When you need to use a tool, output the <tool_use> block. The system will execut
               requestBody.max_tokens = maxOutputTokensRaw;
             }
 
-            const llmRes = await fetch(url, {
-              method: 'POST',
-              headers,
-              body: JSON.stringify(requestBody),
-              // signal: AbortSignal.timeout(60000),
-            });
+            // Retry network errors up to MAX_RETRIES times
+            let llmRes: Response | null = null;
+            let lastFetchError: string = '';
+            for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+              try {
+                llmRes = await fetch(url, {
+                  method: 'POST',
+                  headers,
+                  body: JSON.stringify(requestBody),
+                  signal: AbortSignal.timeout(120000), // 120s per request
+                });
+                lastFetchError = '';
+                break; // success
+              } catch (fetchErr: unknown) {
+                lastFetchError = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+                const isRetriable = lastFetchError.includes('fetch failed') || lastFetchError.includes('ECONNREFUSED') || lastFetchError.includes('timeout') || lastFetchError.includes('ETIMEDOUT');
+                if (!isRetriable || attempt >= MAX_RETRIES) throw fetchErr;
+                // Wait 2s before retrying
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                emit('content', { delta: '' }); // keep connection alive
+              }
+            }
+
+            if (!llmRes) break; // should not happen but guard against null
 
             if (!llmRes.ok) {
               const errText = await llmRes.text();

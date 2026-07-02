@@ -379,7 +379,11 @@ When you need to use a tool, output the <tool_use> block. The system will execut
 
           emit('done', {});
         } catch (e: unknown) {
-          const msg = e instanceof Error ? e.message : String(e);
+          const rawMsg = e instanceof Error ? e.message : String(e);
+          const isNetworkError = rawMsg === 'fetch failed' || rawMsg.includes('ECONNREFUSED') || rawMsg.includes('ENOTFOUND') || rawMsg.includes('network');
+          const msg = isNetworkError 
+            ? `Cannot connect to provider at ${url}. Check if the Base URL is correct and the server is reachable.`
+            : rawMsg;
           if (runId) {
             try { await updateRecord('agent_runs', runId, {
               'Status': 'failed',
@@ -387,7 +391,7 @@ When you need to use a tool, output the <tool_use> block. The system will execut
               'Error Message': msg.slice(0, 200),
             }); } catch {}
           }
-          emit('content', { delta: `\n\n⚠️ Agent Error: ${msg}` });
+          emit('content', { delta: `\n\nAgent Error: ${msg}` });
           emit('done', {});
         } finally {
           controller.close();

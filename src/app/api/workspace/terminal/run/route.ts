@@ -3,6 +3,10 @@ import { spawn } from 'child_process';
 
 const RUNNING_PROCESSES = new Map<string, ReturnType<typeof spawn>>();
 
+// Strip ANSI/VT100 escape codes so browser terminal renders clean text
+const ANSI_RE = /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><~]/g;
+const stripAnsi = (str: string) => str.replace(ANSI_RE, '');
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -41,11 +45,19 @@ export async function POST(request: NextRequest) {
 
         const isWin = process.platform === 'win32';
         const shell = isWin ? 'powershell.exe' : 'bash';
-        const args = isWin ? ['-Command', command] : ['-c', command];
+        // On Windows use -NoLogo -NonInteractive to reduce PowerShell noise
+        const args = isWin
+          ? ['-NoLogo', '-NonInteractive', '-Command', command]
+          : ['-c', command];
 
         const child = spawn(shell, args, {
           cwd: cwd || process.cwd(),
-          env: { ...process.env, FORCE_COLOR: '1' },
+          env: {
+            ...process.env,
+            FORCE_COLOR: '0',  // Disable color output
+            NO_COLOR: '1',
+            TERM: 'dumb',
+          },
           detached: !isWin, // Detach to allow killing process group on Unix
         });
 
@@ -53,11 +65,13 @@ export async function POST(request: NextRequest) {
         emit('pid', { processId: pid });
 
         child.stdout.on('data', (data) => {
-          emit('stdout', { text: data.toString() });
+          const text = stripAnsi(data.toString());
+          if (text) emit('stdout', { text });
         });
 
         child.stderr.on('data', (data) => {
-          emit('stderr', { text: data.toString() });
+          const text = stripAnsi(data.toString());
+          if (text) emit('stderr', { text });
         });
 
         child.on('close', (code) => {
@@ -78,7 +92,7 @@ export async function POST(request: NextRequest) {
           if (process.platform === 'win32') {
             spawn('taskkill', ['/pid', proc.pid!.toString(), '/T', '/F']);
           } else {
-            process.kill(-proc.pid!);
+            try { process.kill(-proc.pid!); } catch {}
           }
           RUNNING_PROCESSES.delete(pid);
         }

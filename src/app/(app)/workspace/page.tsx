@@ -17,6 +17,50 @@ import remarkGfm from 'remark-gfm';
 
 // Global abort controller to survive component unmounts
 let globalAiAbortController: AbortController | null = null;
+let cancelDiffAnimation: (() => void) | null = null;
+
+function startLiveDiffAnimation(path: string, toolName: string, args: Record<string, unknown>) {
+  if (cancelDiffAnimation) { cancelDiffAnimation(); cancelDiffAnimation = null; }
+  const store = useWorkspaceStore.getState();
+
+  if (toolName === 'edit_file') {
+    const oldStr = String(args.old_string || '');
+    const newStr = String(args.new_string || '');
+    const currentContent = store.openFiles.find(f => f.path === path)?.content || '';
+    if (!currentContent.includes(oldStr)) return;
+
+    const insertPos = currentContent.indexOf(oldStr);
+    const prefix = currentContent.substring(0, insertPos);
+    const suffix = currentContent.substring(insertPos + oldStr.length);
+    const finalModified = prefix + newStr + suffix;
+
+    let charIdx = 0;
+    store.setPendingDiff(path, currentContent, prefix + suffix);
+
+    const interval = setInterval(() => {
+      const chunkSize = Math.max(3, Math.floor(newStr.length / 40));
+      charIdx = Math.min(charIdx + chunkSize, newStr.length);
+      const partial = prefix + newStr.substring(0, charIdx) + suffix;
+      store.setPendingDiff(path, currentContent, partial);
+      if (charIdx >= newStr.length) clearInterval(interval);
+    }, 25);
+
+    cancelDiffAnimation = () => { clearInterval(interval); store.setPendingDiff(path, currentContent, finalModified); };
+  } else if (toolName === 'write_file') {
+    const content = String(args.content || '');
+    let charIdx = 0;
+    store.setPendingDiff(path, '', '');
+
+    const interval = setInterval(() => {
+      const chunkSize = Math.max(3, Math.floor(content.length / 40));
+      charIdx = Math.min(charIdx + chunkSize, content.length);
+      store.setPendingDiff(path, '', content.substring(0, charIdx));
+      if (charIdx >= content.length) clearInterval(interval);
+    }, 25);
+
+    cancelDiffAnimation = () => { clearInterval(interval); store.setPendingDiff(path, '', content); };
+  }
+}
 import { toast } from 'sonner';
 import type { Provider, NocoDBListResponse } from '@/types';
 import type { AgentStep } from '@/stores/workspace.store';
@@ -1110,6 +1154,7 @@ export default function WorkspacePage() {
     setActiveFile,
     updateFileContent,
     markFileSaved,
+    markFileDeleted,
     setActivePanel,
     setBottomTab,
     addAiMessage,
@@ -1248,6 +1293,18 @@ export default function WorkspacePage() {
     },
     enabled: !!projectPath,
   });
+
+  // Check for deleted files whenever the file tree refreshes
+  useEffect(() => {
+    if (!fileTree.length || !openFiles.length) return;
+    const allPaths = new Set(flattenTree(fileTree).map((n) => n.path));
+    openFiles.forEach((f) => {
+      const shouldBeDeleted = !allPaths.has(f.path);
+      if (shouldBeDeleted !== !!f.isDeleted) {
+        markFileDeleted(f.path, shouldBeDeleted);
+      }
+    });
+  }, [fileTree, openFiles, markFileDeleted]);
 
   const isFirstRender = useRef(true);
 
@@ -1502,6 +1559,13 @@ export default function WorkspacePage() {
                 currentSteps.push({ type: 'tool_call', toolId: data.id, toolName: data.name, toolArgs: data.args });
                 const argHint = data.args?.path || data.args?.command || '';
                 setAgentStatusText(`Running: ${data.name}${argHint ? ' ' + argHint : ''}`.slice(0, 80));
+                if ((data.name === 'edit_file' || data.name === 'write_file') && data.args?.path) {
+                  const _fp = String(data.args.path);
+                  const _fn = _fp.split(/[/\\]/).pop() || 'file';
+                  if (data.name === 'write_file') useWorkspaceStore.getState().openFile(_fp, _fn, '');
+                  else handleFileClick(_fp, _fn);
+                  startLiveDiffAnimation(_fp, data.name, data.args);
+                }
               } else if (eventType === 'tool_result') {
                 const targetStep = currentSteps.find(s => s.type === 'tool_call' && s.toolId === data.id);
                 if (targetStep) {
@@ -1510,6 +1574,7 @@ export default function WorkspacePage() {
                   if (!data.isError && targetStep.toolArgs?.path) {
                     const toolName = targetStep.toolName || '';
                     if (toolName === 'edit_file' || toolName === 'write_file') {
+                      if (cancelDiffAnimation) { cancelDiffAnimation(); cancelDiffAnimation = null; }
                       const fp = String(targetStep.toolArgs.path);
                       const fn = fp.split(/[/\\]/).pop() || 'file';
                       handleFileClick(fp, fn);
@@ -1769,6 +1834,13 @@ export default function WorkspacePage() {
                 currentSteps.push({ type: 'tool_call', toolId: data.id, toolName: data.name, toolArgs: data.args });
                 const argHint = data.args?.path || data.args?.command || '';
                 setAgentStatusText(`Running: ${data.name}${argHint ? ' ' + argHint : ''}`.slice(0, 80));
+                if ((data.name === 'edit_file' || data.name === 'write_file') && data.args?.path) {
+                  const _fp = String(data.args.path);
+                  const _fn = _fp.split(/[/\\]/).pop() || 'file';
+                  if (data.name === 'write_file') useWorkspaceStore.getState().openFile(_fp, _fn, '');
+                  else handleFileClick(_fp, _fn);
+                  startLiveDiffAnimation(_fp, data.name, data.args);
+                }
               } else if (eventType === 'tool_result') {
                 const targetStep = currentSteps.find(s => s.type === 'tool_call' && s.toolId === data.id);
                 if (targetStep) {
@@ -1777,6 +1849,7 @@ export default function WorkspacePage() {
                   if (!data.isError && targetStep.toolArgs?.path) {
                     const toolName = targetStep.toolName || '';
                     if (toolName === 'edit_file' || toolName === 'write_file') {
+                      if (cancelDiffAnimation) { cancelDiffAnimation(); cancelDiffAnimation = null; }
                       const fp = String(targetStep.toolArgs.path);
                       const fn = fp.split(/[/\\]/).pop() || 'file';
                       handleFileClick(fp, fn);
@@ -2013,10 +2086,13 @@ export default function WorkspacePage() {
                           setTabContextMenu({ path: file.path, x: e.clientX, y: e.clientY });
                         }}
                       >
-                        {file.isDirty && (
+                        {file.isDeleted && (
+                          <span className="size-1.5 rounded-full bg-[#c74e39] flex-shrink-0" />
+                        )}
+                        {file.isDirty && !file.isDeleted && (
                           <Circle className="size-2 fill-current text-[#e8e8e8]" />
                         )}
-                        <span className="text-xs py-1.5">{file.name}</span>
+                        <span className={`text-xs py-1.5 ${file.isDeleted ? 'line-through text-[#c74e39] opacity-70' : ''}`}>{file.name}</span>
                         <button
                           className="hover:bg-[#333333] rounded p-0.5 transition-colors ml-1"
                           onClick={(e) => {

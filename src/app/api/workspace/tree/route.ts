@@ -18,7 +18,22 @@ const IGNORED_DIRS = new Set([
   'dist',
   'build',
   '.vscode',
-  '.idea'
+  '.idea',
+  '.turbo',
+  '.cache',
+  '__pycache__',
+  '.DS_Store',
+  'coverage',
+  '.vercel',
+  '.output',
+]);
+
+const IGNORED_FILES = new Set([
+  'pnpm-lock.yaml',
+  'package-lock.json',
+  'yarn.lock',
+  '.DS_Store',
+  'Thumbs.db',
 ]);
 
 async function buildFileTree(
@@ -33,7 +48,6 @@ async function buildFileTree(
   try {
     const entries = await fs.readdir(dirPath, { withFileTypes: true });
     
-    // Sort entries: directories first, then files, both alphabetically
     const sortedEntries = entries.sort((a, b) => {
       if (a.isDirectory() && !b.isDirectory()) return -1;
       if (!a.isDirectory() && b.isDirectory()) return 1;
@@ -43,7 +57,10 @@ async function buildFileTree(
     const nodes: FileNode[] = [];
 
     for (const entry of sortedEntries) {
-      if (IGNORED_DIRS.has(entry.name) || entry.name.startsWith('.env')) {
+      if (IGNORED_DIRS.has(entry.name) && entry.isDirectory()) {
+        continue;
+      }
+      if (IGNORED_FILES.has(entry.name) && !entry.isDirectory()) {
         continue;
       }
 
@@ -65,7 +82,7 @@ async function buildFileTree(
     return nodes;
   } catch (error) {
     console.error(`Failed to read directory ${dirPath}:`, error);
-    return []; // Return empty array for inaccessible directories
+    return [];
   }
 }
 
@@ -75,11 +92,9 @@ export async function GET(request: NextRequest) {
     let targetPath = searchParams.get('path');
     const projectId = searchParams.get('projectId');
     
-    // Default max depth
-    const maxDepth = searchParams.get('depth') ? Number(searchParams.get('depth')) : 3;
+    const maxDepth = searchParams.get('depth') ? Number(searchParams.get('depth')) : 10;
 
     if (!targetPath && projectId) {
-      // Try to get path from project
       try {
         const project = await getRecord<Project>('projects', Number(projectId));
         if (project.local_path) {

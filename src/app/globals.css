@@ -134,6 +134,8 @@
 .prose-ide {
   font-size: 12px !important;
   line-height: 1.6 !important;
+  word-wrap: break-word !important;
+  overflow-wrap: break-word !important;
 }
 .prose-ide p,
 .prose-ide ul,
@@ -146,6 +148,7 @@
 .prose-ide dt {
   font-size: 12px !important;
   line-height: 1.6 !important;
+  color: #d4d4d4 !important;
 }
 .prose-ide h1 { font-size: 14px !important; font-weight: 600 !important; }
 .prose-ide h2 { font-size: 13px !important; font-weight: 600 !important; }
@@ -160,15 +163,27 @@
   font-size: 11px !important;
   line-height: 1.5 !important;
   padding: 8px 10px !important;
+  overflow-x: auto !important;
+  max-width: 100% !important;
 }
 .prose-ide table {
   font-size: 11px !important;
+  width: 100% !important;
+  overflow-x: auto !important;
+  display: block !important;
 }
 .prose-ide img {
   max-width: 100% !important;
 }
 .prose-ide strong {
   font-weight: 600 !important;
+  color: #e0e0e0 !important;
+}
+.prose-ide a {
+  color: #4fc1ff !important;
+}
+.prose-ide em {
+  color: #d4d4d4 !important;
 }
 
 /* Monaco Editor — VibeForge AI change decorations */

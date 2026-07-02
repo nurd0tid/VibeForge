@@ -20,7 +20,6 @@ let globalAiAbortController: AbortController | null = null;
 let cancelDiffAnimation: (() => void) | null = null;
 
 // Animates the Monaco DiffEditor modified pane LOCALLY (no Zustand re-renders).
-// We directly mutate the DiffEditor instance's modified model.
 function startLiveDiffAnimation(path: string, toolName: string, args: Record<string, unknown>) {
   if (cancelDiffAnimation) { cancelDiffAnimation(); cancelDiffAnimation = null; }
   const store = useWorkspaceStore.getState();
@@ -34,19 +33,19 @@ function startLiveDiffAnimation(path: string, toolName: string, args: Record<str
     const prefix = currentContent.substring(0, insertPos);
     const suffix = currentContent.substring(insertPos + oldStr.length);
     const finalModified = prefix + newStr + suffix;
-    // Set the pendingDiff once (not in a loop) to switch editor to split view
     store.setPendingDiff(path, currentContent, prefix + suffix);
-    // Then after a brief delay, update to final state (no animation loop - prevents crash)
     const timer = setTimeout(() => {
       store.setPendingDiff(path, currentContent, finalModified);
-    }, 400);
+      cancelDiffAnimation = null;
+    }, 300);
     cancelDiffAnimation = () => { clearTimeout(timer); store.setPendingDiff(path, currentContent, finalModified); };
   } else if (toolName === 'write_file') {
     const content = String(args.content || '');
     store.setPendingDiff(path, '', '');
     const timer = setTimeout(() => {
       store.setPendingDiff(path, '', content);
-    }, 400);
+      cancelDiffAnimation = null;
+    }, 300);
     cancelDiffAnimation = () => { clearTimeout(timer); store.setPendingDiff(path, '', content); };
   }
 }
@@ -105,11 +104,17 @@ import {
   Lock,
   ChevronsUpDown,
   Settings,
-  MoreVertical,
   Pencil,
   RotateCcw,
   Brain,
-  Bookmark
+  Bookmark,
+  Image as ImageIcon,
+  Paintbrush,
+  Globe,
+  Cog,
+  Database,
+  Shield,
+  Hash
 } from 'lucide-react';
 
 interface GitChange {
@@ -554,20 +559,47 @@ function getLanguage(name: string): string {
   return map[ext] || 'plaintext';
 }
 
-function FileTypeIcon({ name }: { name: string }) {
+function FileTypeIcon({ name, className: extraClass }: { name: string; className?: string }) {
   const ext = name.split('.').pop()?.toLowerCase() || '';
+  const base = `size-4 flex-shrink-0 ${extraClass || ''}`;
 
-  if (['ts', 'tsx', 'js', 'jsx'].includes(ext)) {
-    return <FileCode className="size-4 flex-shrink-0 text-[#519aba]" />;
-  }
-  if (ext === 'json') {
-    return <FileJson className="size-4 flex-shrink-0 text-[#cbcb41]" />;
-  }
-  if (['md', 'txt'].includes(ext)) {
-    return <FileText className="size-4 flex-shrink-0 text-[#519aba]" />;
-  }
+  if (name === 'package.json' || name === 'package-lock.json') return <FileJson className={`${base} text-[#73c991]`} />;
+  if (name === 'tsconfig.json' || name.startsWith('tsconfig')) return <Cog className={`${base} text-[#519aba]`} />;
+  if (name.startsWith('.env')) return <Shield className={`${base} text-[#e2c08d]`} />;
+  if (name === 'pnpm-lock.yaml' || name === 'yarn.lock' || name === 'package-lock.json') return <FileJson className={`${base} text-[#888]`} />;
+  if (name === 'next.config.ts' || name === 'next.config.js' || name === 'next.config.mjs') return <Cog className={`${base} text-[#fff]`} />;
+  if (name === 'tailwind.config.ts' || name === 'tailwind.config.js') return <Paintbrush className={`${base} text-[#38bdf8]`} />;
+  if (name === 'postcss.config.mjs' || name === 'postcss.config.js') return <Cog className={`${base} text-[#dd3a0a]`} />;
+  if (name === 'eslint.config.mjs' || name.startsWith('.eslint')) return <Shield className={`${base} text-[#4b32c3]`} />;
+  if (name === '.gitignore' || name === '.gitattributes') return <GitBranch className={`${base} text-[#f05032]`} />;
+  if (name === 'README.md' || name === 'AGENTS.md' || name === 'CLAUDE.md') return <FileText className={`${base} text-[#519aba]`} />;
+  if (name === 'Dockerfile' || name.startsWith('docker-compose')) return <Database className={`${base} text-[#2496ed]`} />;
 
-  return <GenericFileIcon className="size-4 flex-shrink-0 text-[#cccccc]" />;
+  if (['ts', 'mts', 'cts'].includes(ext)) return <FileCode className={`${base} text-[#3178c6]`} />;
+  if (['tsx'].includes(ext)) return <FileCode className={`${base} text-[#61dafb]`} />;
+  if (['js', 'mjs', 'cjs'].includes(ext)) return <FileCode className={`${base} text-[#f7df1e]`} />;
+  if (['jsx'].includes(ext)) return <FileCode className={`${base} text-[#61dafb]`} />;
+  if (['json', 'jsonc'].includes(ext)) return <FileJson className={`${base} text-[#cbcb41]`} />;
+  if (['css'].includes(ext)) return <Hash className={`${base} text-[#563d7c]`} />;
+  if (['scss', 'sass'].includes(ext)) return <Hash className={`${base} text-[#c6538c]`} />;
+  if (['less'].includes(ext)) return <Hash className={`${base} text-[#1d365d]`} />;
+  if (['html', 'htm'].includes(ext)) return <Globe className={`${base} text-[#e44d26]`} />;
+  if (['md', 'mdx'].includes(ext)) return <FileText className={`${base} text-[#519aba]`} />;
+  if (['txt'].includes(ext)) return <FileText className={`${base} text-[#888]`} />;
+  if (['svg', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'bmp'].includes(ext)) return <ImageIcon className={`${base} text-[#a074c4]`} />;
+  if (['yml', 'yaml'].includes(ext)) return <FileCode className={`${base} text-[#cc3e44]`} />;
+  if (['toml'].includes(ext)) return <Cog className={`${base} text-[#9c4221]`} />;
+  if (['sh', 'bash', 'zsh', 'fish'].includes(ext)) return <Terminal className={`${base} text-[#4ec9b0]`} />;
+  if (['py'].includes(ext)) return <FileCode className={`${base} text-[#3572A5]`} />;
+  if (['rs'].includes(ext)) return <FileCode className={`${base} text-[#dea584]`} />;
+  if (['go'].includes(ext)) return <FileCode className={`${base} text-[#00add8]`} />;
+  if (['java'].includes(ext)) return <FileCode className={`${base} text-[#b07219]`} />;
+  if (['php'].includes(ext)) return <FileCode className={`${base} text-[#4F5D95]`} />;
+  if (['rb'].includes(ext)) return <FileCode className={`${base} text-[#701516]`} />;
+  if (['sql'].includes(ext)) return <Database className={`${base} text-[#e38c00]`} />;
+  if (['prisma'].includes(ext)) return <Database className={`${base} text-[#2d3748]`} />;
+
+  return <GenericFileIcon className={`${base} text-[#cccccc]`} />;
 }
 
 function FileTreeNode({
@@ -878,18 +910,18 @@ function ToolCallStep({ step }: { step: AgentStep }) {
       <div className="text-[9px] font-mono">
         <div className="flex items-center gap-1.5 py-0.5">
           {isRunning ? <Loader2 className="size-2.5 animate-spin text-[#007acc] shrink-0" /> : <FileCode className="size-2.5 text-[#519aba] shrink-0" />}
-          <span className={`truncate max-w-[200px] ${isRunning ? 'vibeforge-wave-text' : 'text-[#cccccc]'}`}>{filePath}</span>
+          <span className={`truncate max-w-[200px] ${isRunning ? 'vibeforge-wave-text' : 'text-[#d4d4d4]'}`}>{filePath}</span>
           {isFinished && lineCount > 0 && (
-            <span className="text-[#555] ml-1 shrink-0">lines 1–{lineCount}</span>
+            <span className="text-[#888] ml-1 shrink-0">lines 1–{lineCount}</span>
           )}
           {isFinished && step.toolOutput && (
-            <button onClick={() => setExpanded(!expanded)} className="ml-auto text-[#555] hover:text-[#888]">
+            <button onClick={() => setExpanded(!expanded)} className="ml-auto text-[#888] hover:text-[#cccccc]">
               <ChevronRight className={`size-2.5 transition-transform ${expanded ? 'rotate-90' : ''}`} />
             </button>
           )}
         </div>
         {expanded && step.toolOutput && (
-          <div className="ml-4 text-[9px] text-[#666] bg-[#1a1a1a] border border-[#333] rounded p-1.5 mt-0.5 max-h-24 overflow-y-auto whitespace-pre-wrap">
+          <div className="ml-4 text-[9px] text-[#aaa] bg-[#1a1a1a] border border-[#333] rounded p-1.5 mt-0.5 max-h-24 overflow-y-auto whitespace-pre-wrap">
             {step.toolOutput.slice(0, 600)}{step.toolOutput.length > 600 ? '\n…' : ''}
           </div>
         )}
@@ -905,9 +937,9 @@ function ToolCallStep({ step }: { step: AgentStep }) {
       <div className="text-[9px] font-mono">
         <div className="flex items-center gap-1.5 py-0.5">
           {isRunning ? <Loader2 className="size-2.5 animate-spin text-[#007acc] shrink-0" /> : <FolderOpen className="size-2.5 text-[#dcb67a] shrink-0" />}
-          <span className={`truncate max-w-[200px] ${isRunning ? 'vibeforge-wave-text' : 'text-[#cccccc]'}`}>{filePath}</span>
+          <span className={`truncate max-w-[200px] ${isRunning ? 'vibeforge-wave-text' : 'text-[#d4d4d4]'}`}>{filePath}</span>
           {isFinished && preview.length > 0 && (
-            <button onClick={() => setExpanded(!expanded)} className="ml-auto text-[#555] hover:text-[#888]">
+            <button onClick={() => setExpanded(!expanded)} className="ml-auto text-[#888] hover:text-[#cccccc]">
               <ChevronRight className={`size-2.5 transition-transform ${expanded ? 'rotate-90' : ''}`} />
             </button>
           )}
@@ -918,13 +950,13 @@ function ToolCallStep({ step }: { step: AgentStep }) {
               const isDir = line.includes('[DIR]');
               const clean = line.replace(/^\[(DIR|FILE)\]\s*/, '').trim();
               return (
-                <div key={i} className="flex items-center gap-1 text-[#777]">
+                <div key={i} className="flex items-center gap-1 text-[#aaa]">
                   {isDir ? <Folder className="size-2 text-[#dcb67a] shrink-0" /> : <FileCode className="size-2 text-[#519aba] shrink-0" />}
                   <span>{clean}</span>
                 </div>
               );
             })}
-            {lines.length > 5 && <span className="text-[#555]">+{lines.length - 5} more…</span>}
+            {lines.length > 5 && <span className="text-[#888]">+{lines.length - 5} more…</span>}
           </div>
         )}
       </div>
@@ -969,8 +1001,8 @@ function ToolCallStep({ step }: { step: AgentStep }) {
     return (
       <div className="text-[9px] font-mono flex items-center gap-1.5 py-0.5">
         {isRunning ? <Loader2 className="size-2.5 animate-spin text-[#007acc] shrink-0" /> : <Brain className="size-2.5 text-[#888] shrink-0" />}
-        <span className={isRunning ? 'vibeforge-wave-text' : 'text-[#777]'}>{label}</span>
-        {filePath && <span className="text-[#cccccc] truncate max-w-[180px]">{filePath}</span>}
+        <span className={isRunning ? 'vibeforge-wave-text' : 'text-[#aaa]'}>{label}</span>
+        {filePath && <span className="text-[#d4d4d4] truncate max-w-[180px]">{filePath}</span>}
       </div>
     );
   }
@@ -979,8 +1011,8 @@ function ToolCallStep({ step }: { step: AgentStep }) {
   return (
     <div className="text-[9px] font-mono flex items-center gap-1.5 py-0.5">
       {isRunning ? <Loader2 className="size-2.5 animate-spin text-[#007acc] shrink-0" /> : <Cpu className="size-2.5 text-[#888] shrink-0" />}
-      <span className={isRunning ? 'vibeforge-wave-text' : 'text-[#777]'}>{step.toolName}</span>
-      {filePath && <span className="text-[#cccccc] truncate max-w-[180px]">{filePath}</span>}
+      <span className={isRunning ? 'vibeforge-wave-text' : 'text-[#aaa]'}>{step.toolName}</span>
+      {filePath && <span className="text-[#d4d4d4] truncate max-w-[180px]">{filePath}</span>}
     </div>
   );
 }
@@ -992,12 +1024,12 @@ function AiMessageBubble({ role, content, steps, model, provider, isLast }: { ro
   if (isUser) {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[85%] rounded-lg px-3 py-2 text-xs leading-relaxed bg-[#264f78] text-[#d4e4f7]">
+        <div className="max-w-[85%] rounded-lg px-3 py-2 text-xs leading-relaxed bg-[#264f78] text-[#d4e4f7] min-w-0">
           <div className="flex items-center gap-1.5 mb-1">
             <Cpu className="size-3 text-[#9cdcfe]" />
             <span className="font-semibold text-[10px] uppercase tracking-wide text-[#9cdcfe]">You</span>
           </div>
-          <p className="whitespace-pre-wrap">{content}</p>
+          <p className="whitespace-pre-wrap break-words overflow-hidden">{content}</p>
         </div>
       </div>
     );
@@ -1016,7 +1048,7 @@ function AiMessageBubble({ role, content, steps, model, provider, isLast }: { ro
 
   return (
     <div className="flex justify-start">
-      <div className="max-w-[90%] rounded-lg text-xs leading-relaxed bg-[#2d2d2d] text-[#cccccc] border border-[#3a3a3a] overflow-hidden break-words">
+      <div className="max-w-[90%] min-w-0 rounded-lg text-xs leading-relaxed bg-[#2d2d2d] text-[#cccccc] border border-[#3a3a3a] overflow-hidden">
         <div className="flex items-center gap-1.5 px-3 pt-2 pb-1 border-b border-[#3a3a3a]">
           <Bot className="size-3.5 text-[#4ec9b0]" />
           <span className="font-semibold text-[10px] uppercase tracking-wide text-[#4ec9b0]">VibeForge AI</span>
@@ -1034,47 +1066,21 @@ function AiMessageBubble({ role, content, steps, model, provider, isLast }: { ro
           const toolSteps = steps.filter(s => s.type === 'tool_call');
           const readSteps = toolSteps.filter(s => s.toolName === 'read_file');
           const searchSteps = toolSteps.filter(s => s.toolName === 'list_directory');
+          const isStreamingDone = allFinished && content && toolSteps.length > 0;
 
-          // After everything is done and there's a response text → collapse to "Show output"
-          if (allFinished && content && toolSteps.length > 0) {
-            return (
-              <details className="mx-3 mt-2 mb-1 group">
-                <summary className="flex items-center gap-1.5 text-[9px] text-[#555] cursor-pointer hover:text-[#888] transition-colors select-none list-none">
-                  <ChevronRight className="size-2.5 shrink-0 group-open:rotate-90 transition-transform" />
-                  <span>Show output</span>
-                  <span className="text-[#444]">
-                    {readSteps.length > 0 && `${readSteps.length} file${readSteps.length > 1 ? 's' : ''}`}
-                    {readSteps.length > 0 && searchSteps.length > 0 && ' · '}
-                    {searchSteps.length > 0 && `${searchSteps.length} folder${searchSteps.length > 1 ? 's' : ''}`}
-                    {(readSteps.length === 0 && searchSteps.length === 0) && `${toolSteps.length} step${toolSteps.length > 1 ? 's' : ''}`}
-                  </span>
-                </summary>
-                <div className="flex flex-col gap-0 mt-1 pl-1">
-                  {steps.map((step, idx) => {
-                    if (step.type === 'thought') return <div key={idx} className="text-[9px] text-[#555] italic py-0.5 truncate">{step.text?.slice(0, 60)}</div>;
-                    if (step.type === 'tool_call') return (
-                      <div key={idx}>
-                        <ActivityDivider />
-                        <ToolCallStep step={step} />
-                      </div>
-                    );
-                    return null;
-                  })}
-                </div>
-              </details>
-            );
+          if (isStreamingDone) {
+            return null;
           }
 
-          // Live streaming view
           return (
             <div className="flex flex-col mx-3 mt-2 gap-0">
               {steps.map((step, idx) => {
                 if (step.type === 'thought') {
                   const isActive = !step.toolOutput && idx === steps.length - 1;
                   return (
-                    <div key={idx} className="text-[9px] py-1">
-                      <span className={isActive ? 'vibeforge-wave-text' : 'text-[#555] italic'}>
-                        {step.text ? step.text.slice(0, 100) + (step.text.length > 100 ? '...' : '') : (isActive ? 'Thinking...' : '')}
+                    <div key={idx} className="text-[10px] py-1 px-1">
+                      <span className={isActive ? 'vibeforge-wave-text' : 'text-[#999] italic'}>
+                        {step.text ? step.text.slice(0, 150) + (step.text.length > 150 ? '...' : '') : (isActive ? 'Thinking...' : '')}
                       </span>
                     </div>
                   );
@@ -1094,16 +1100,53 @@ function AiMessageBubble({ role, content, steps, model, provider, isLast }: { ro
         })()}
 
         {content && (
-          <div className="px-3 py-2 prose prose-invert prose-ide max-w-none text-[#cccccc] [&_code]:text-[#ce9178] [&_pre]:bg-[#1e1e1e] [&_pre]:border [&_pre]:border-[#3a3a3a] [&_h1]:text-[#4ec9b0] [&_h2]:text-[#4ec9b0] [&_h3]:text-[#4ec9b0] [&_blockquote]:border-[#3a3a3a] overflow-x-hidden word-break-all">
+          <div className="px-3 py-2 prose prose-invert prose-ide max-w-none text-[#d4d4d4] [&_code]:text-[#ce9178] [&_pre]:bg-[#1e1e1e] [&_pre]:border [&_pre]:border-[#3a3a3a] [&_h1]:text-[#4ec9b0] [&_h2]:text-[#4ec9b0] [&_h3]:text-[#4ec9b0] [&_blockquote]:border-[#3a3a3a] [&_strong]:text-[#e0e0e0] [&_a]:text-[#4fc1ff] [&_p]:text-[#d4d4d4] [&_li]:text-[#d4d4d4] overflow-hidden break-words">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
           </div>
         )}
 
+        {/* Show output — collapsed AFTER the content text, only when done */}
+        {steps && steps.length > 0 && (() => {
+          const allFinished = steps.every(s => s.type === 'thought' || !!s.toolOutput);
+          const toolSteps = steps.filter(s => s.type === 'tool_call');
+          const readSteps = toolSteps.filter(s => s.toolName === 'read_file');
+          const searchSteps = toolSteps.filter(s => s.toolName === 'list_directory');
+
+          if (!(allFinished && content && toolSteps.length > 0)) return null;
+
+          return (
+            <details className="mx-3 mt-1 mb-2 group">
+              <summary className="flex items-center gap-1.5 text-[9px] text-[#888] cursor-pointer hover:text-[#cccccc] transition-colors select-none list-none">
+                <ChevronRight className="size-2.5 shrink-0 group-open:rotate-90 transition-transform" />
+                <span>Show output</span>
+                <span className="text-[#777]">
+                  {readSteps.length > 0 && `${readSteps.length} file${readSteps.length > 1 ? 's' : ''}`}
+                  {readSteps.length > 0 && searchSteps.length > 0 && ' · '}
+                  {searchSteps.length > 0 && `${searchSteps.length} folder${searchSteps.length > 1 ? 's' : ''}`}
+                  {(readSteps.length === 0 && searchSteps.length === 0) && `${toolSteps.length} step${toolSteps.length > 1 ? 's' : ''}`}
+                </span>
+              </summary>
+              <div className="flex flex-col gap-0 mt-1 pl-1">
+                {steps.map((step, idx) => {
+                  if (step.type === 'thought') return <div key={idx} className="text-[9px] text-[#888] italic py-0.5 truncate">{step.text?.slice(0, 80)}</div>;
+                  if (step.type === 'tool_call') return (
+                    <div key={idx}>
+                      <ActivityDivider />
+                      <ToolCallStep step={step} />
+                    </div>
+                  );
+                  return null;
+                })}
+              </div>
+            </details>
+          );
+        })()}
+
         {/* Thinking indicator — shown inside bubble when running with no content yet */}
         {isLast && !content && (!steps || steps.length === 0) && (
-          <div className="px-3 py-2 flex items-center gap-2">
-            <Loader2 className="size-3 animate-spin text-[#4ec9b0] shrink-0" />
-            <span className="text-[9px] vibeforge-wave-text">Thinking...</span>
+          <div className="px-3 py-3 flex items-center gap-2">
+            <Loader2 className="size-3.5 animate-spin text-[#4ec9b0] shrink-0" />
+            <span className="text-[10px] vibeforge-wave-text font-medium">Thinking...</span>
           </div>
         )}
       </div>
@@ -1707,7 +1750,11 @@ export default function WorkspacePage() {
                   }
                 }
               } else if (eventType === 'content_stream') {
-                fullContent += data.delta || '';
+                const hasToolCalls = currentSteps.some(s => s.type === 'tool_call');
+                if (!hasToolCalls) {
+                  const delta = (data.delta || '').replace(/<tool_use>[\s\S]*?<\/tool_use>/g, '').replace(/<[^>]*$/g, '');
+                  if (delta.trim()) fullContent += delta;
+                }
               } else if (eventType === 'content') {
                 if (data.replace) {
                   fullContent = data.delta || '';
@@ -1989,7 +2036,11 @@ export default function WorkspacePage() {
                   }
                 }
               } else if (eventType === 'content_stream') {
-                fullContent += data.delta || '';
+                const hasToolCalls = currentSteps.some(s => s.type === 'tool_call');
+                if (!hasToolCalls) {
+                  const delta = (data.delta || '').replace(/<tool_use>[\s\S]*?<\/tool_use>/g, '').replace(/<[^>]*$/g, '');
+                  if (delta.trim()) fullContent += delta;
+                }
               } else if (eventType === 'content') {
                 if (data.replace) {
                   fullContent = data.delta || '';
@@ -2233,7 +2284,8 @@ export default function WorkspacePage() {
                         {file.isDirty && !file.isDeleted && !file.tag && (
                           <Circle className="size-2 fill-current text-[#e8e8e8]" />
                         )}
-                        <span className={`text-xs py-1.5 ${file.isDeleted && !file.tag ? 'line-through text-[#c74e39] opacity-70' : ''}`}>
+                        <FileTypeIcon name={file.name} className="!size-3.5" />
+                        <span className={`text-xs py-1.5 ${file.isDeleted && !file.tag ? 'line-through text-[#c74e39] opacity-70' : ''} ${file.tag === 'created' ? 'text-[#73c991]' : file.tag === 'edited' ? 'text-[#4ec9b0]' : ''}`}>
                           {file.name}{file.tag === 'created' ? ': New File' : file.tag === 'edited' ? ': Editing' : ''}
                         </span>
                         <button

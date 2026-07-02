@@ -92,18 +92,20 @@ interface StreamResult {
   };
 }
 
-/** Stream LLM response — stream clean prose in realtime, buffer XML tool blocks */
+/** Stream LLM response — emit prose AND detect tool calls. Tool execution is done separately. */
 async function readStreamWithEmit(
   body: ReadableStream<Uint8Array>,
-  emitChunk: (delta: string) => void
+  emitChunk: (delta: string) => void,
+  onToolFound?: (toolXml: string) => Promise<void> | void
 ): Promise<StreamResult> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let fullText = '';
   let buffer = '';
   let usage: StreamResult['usage'] = undefined;
-  // We buffer text and only emit when we're sure it's not part of a tool block
   let pending = '';
+  let insideToolPhase = false;
+  const toolPromises: Promise<void>[] = [];
 
   while (true) {
     const { value, done } = await reader.read();
@@ -123,34 +125,54 @@ async function readStreamWithEmit(
           fullText += delta;
           pending += delta;
           
-          // If a tool block is complete in pending, don't emit anything (tool blocks handled after)
-          // Otherwise emit clean text segments
           if (pending.includes('<tool_use>')) {
-            // Found start of tool block - emit everything before it
-            const idx = pending.indexOf('<tool_use>');
-            const before = pending.slice(0, idx);
-            if (before.trim()) emitChunk(before);
-            pending = pending.slice(idx); // keep from <tool_use> onwards buffered
-          } else if (!pending.includes('<') || pending.indexOf('<') === pending.length - 1) {
-            // No XML start detected (or only at end which could be partial)
-            // Safe to emit all except last char if it ends with '<'
-            const safe = pending.endsWith('<') ? pending.slice(0, -1) : pending;
-            if (safe) emitChunk(safe);
-            pending = pending.endsWith('<') ? '<' : '';
+            insideToolPhase = true;
           }
-          // else: we might have partial '<tool' - keep buffering
+
+          while (pending.includes('<tool_use>') && pending.includes('</tool_use>')) {
+            const startIdx = pending.indexOf('<tool_use>');
+            const endIdx = pending.indexOf('</tool_use>') + '</tool_use>'.length;
+            
+            const before = pending.slice(0, startIdx).trim();
+            if (before) emitChunk(before);
+            
+            const toolXml = pending.slice(startIdx, endIdx);
+            if (onToolFound) {
+              const p = onToolFound(toolXml);
+              if (p && typeof p.then === 'function') toolPromises.push(p);
+            }
+            
+            pending = pending.slice(endIdx);
+            insideToolPhase = pending.includes('<tool_use>') || pending.includes('<');
+          }
+          
+          if (!insideToolPhase && !pending.includes('<tool_use>') && !pending.includes('<tool')) {
+            const safeEnd = pending.lastIndexOf('<');
+            if (safeEnd <= 0) {
+              if (pending && !pending.includes('<')) {
+                emitChunk(pending);
+                pending = '';
+              }
+            } else {
+              const safe = pending.slice(0, safeEnd);
+              if (safe.trim()) emitChunk(safe);
+              pending = pending.slice(safeEnd);
+            }
+          }
         }
         if (chunk.usage) {
           usage = chunk.usage;
         }
       } catch {
-        // ignore partial
+        // ignore partial JSON
       }
     }
   }
-  // Emit any remaining clean content (not tool blocks)
-  if (pending && !pending.includes('<tool_use>')) {
-    const clean = pending.replace(/<[^>]*>/g, '').trim();
+  
+  await Promise.all(toolPromises);
+  
+  if (pending) {
+    const clean = pending.replace(/<tool_use>[\s\S]*?<\/tool_use>/g, '').replace(/<[^>]*>/g, '').trim();
     if (clean) emitChunk(clean);
   }
   return { fullText, usage };
@@ -288,8 +310,14 @@ When you need to use a tool, output the <tool_use> block. The system will execut
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
+        let closed = false;
         const emit = (event: string, data: unknown) => {
-          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+          if (closed) return;
+          try {
+            controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+          } catch {
+            closed = true;
+          }
         };
 
         try {
@@ -381,10 +409,36 @@ When you need to use a tool, output the <tool_use> block. The system will execut
               break;
             }
 
-            // Stream LLM response — emit content chunks realtime to frontend
-            const streamRes = await readStreamWithEmit(llmRes.body, (delta) => {
-              emit('content_stream', { delta });
-            });
+            // Stream LLM response — detect tool calls inline, execute them sequentially
+            const realtimeToolCount = { n: 0 };
+            
+            const streamRes = await readStreamWithEmit(
+              llmRes.body,
+              (delta) => { emit('content_stream', { delta }); },
+              async (toolXml) => {
+                const nameMatch = toolXml.match(/<name>([\w_]+)<\/name>/);
+                const argsMatch = toolXml.match(/<args>([\s\S]*?)<\/args>/);
+                if (!nameMatch) return;
+                
+                const toolName = nameMatch[1];
+                let toolArgs: Record<string, string> = {};
+                try { if (argsMatch) toolArgs = JSON.parse(argsMatch[1]); } catch {}
+                
+                const callId = `call_${Date.now()}_${toolName}_${realtimeToolCount.n++}`;
+                emit('tool_call', { id: callId, name: toolName, args: toolArgs });
+                
+                let output: string;
+                let isError = false;
+                try {
+                  output = await executeTool(toolName, toolArgs, workspaceRoot);
+                } catch (e: unknown) {
+                  output = `Error: ${e instanceof Error ? e.message : String(e)}`;
+                  isError = true;
+                }
+                
+                emit('tool_result', { id: callId, name: toolName, output: output.slice(0, 2000), isError });
+              }
+            );
             const responseText = streamRes.fullText;
             
             if (!responseText.trim()) {
@@ -411,24 +465,21 @@ When you need to use a tool, output the <tool_use> block. The system will execut
 
             // Parse any tool calls from the accumulated response
             const toolCalls = parseToolCalls(responseText);
+            const inlineToolsExecuted = realtimeToolCount.n;
 
-            if (toolCalls.length === 0) {
-              // No tool calls — streaming already delivered the content.
-              // Just strip any accidental tool markup and record output.
+            if (toolCalls.length === 0 && inlineToolsExecuted === 0) {
               const cleanText = responseText
                 .replace(/<tool_use>[\s\S]*?<\/tool_use>/g, '')
                 .replace(/```tool[\s\S]*?```/g, '')
                 .trim();
               fullOutputText = cleanText;
-              // Emit a replace event so frontend swaps streamed raw text with clean final text
               emit('content', { delta: cleanText, replace: true });
               break;
             }
 
-            // Has tool calls — clear the raw streamed text (which included XML blocks)
-            // and replace with the clean thought text
             const thoughtText = responseText
               .replace(/<tool_use>[\s\S]*?<\/tool_use>/g, '')
+              .replace(/<tool_result>[\s\S]*?<\/tool_result>/g, '')
               .replace(/```tool[\s\S]*?```/g, '')
               .trim();
             emit('content', { delta: thoughtText, replace: true });
@@ -436,33 +487,59 @@ When you need to use a tool, output the <tool_use> block. The system will execut
               emit('thought', { text: thoughtText });
             }
 
-            // Add assistant message to conversation
             chatMessages.push({ role: 'assistant', content: responseText });
 
-            // Execute tool calls
             const toolResultParts: string[] = [];
-            for (const tc of toolCalls) {
-              const callId = `call_${Date.now()}_${tc.name}`;
-              emit('tool_call', { id: callId, name: tc.name, args: tc.args });
 
-              let output: string;
-              let isError = false;
-              try {
-                output = await executeTool(tc.name, tc.args, workspaceRoot);
-              } catch (e: unknown) {
-                output = `Error: ${e instanceof Error ? e.message : String(e)}`;
-                isError = true;
+            if (inlineToolsExecuted === 0 && toolCalls.length > 0) {
+              for (const tc of toolCalls) {
+                const callId = `call_${Date.now()}_${tc.name}`;
+                emit('tool_call', { id: callId, name: tc.name, args: tc.args });
+
+                let output: string;
+                let isError = false;
+                try {
+                  output = await executeTool(tc.name, tc.args, workspaceRoot);
+                } catch (e: unknown) {
+                  output = `Error: ${e instanceof Error ? e.message : String(e)}`;
+                  isError = true;
+                }
+
+                emit('tool_result', { id: callId, name: tc.name, output: output.slice(0, 2000), isError });
+                toolResultParts.push(`<tool_result>\n<name>${tc.name}</name>\n<result>${output}</result>\n</tool_result>`);
               }
-
-              emit('tool_result', { id: callId, name: tc.name, output: output.slice(0, 2000), isError });
-              toolResultParts.push(`<tool_result>\n<name>${tc.name}</name>\n<result>${output}</result>\n</tool_result>`);
+            } else {
+              for (const tc of toolCalls) {
+                const args = tc.args || {};
+                let output: string;
+                try { output = await executeTool(tc.name, args, workspaceRoot); } catch { output = ''; }
+                toolResultParts.push(`<tool_result>\n<name>${tc.name}</name>\n<result>${output}</result>\n</tool_result>`);
+              }
             }
 
-            // Add tool results to conversation
-            chatMessages.push({
-              role: 'user',
-              content: toolResultParts.join('\n\n'),
-            });
+            if (toolResultParts.length > 0) {
+              chatMessages.push({
+                role: 'user',
+                content: toolResultParts.join('\n\n'),
+              });
+            } else if (inlineToolsExecuted > 0) {
+              const inlineResults: string[] = [];
+              const toolPattern = /<tool_use>\s*<name>([\w_]+)<\/name>\s*<args>([\s\S]*?)<\/args>\s*<\/tool_use>/g;
+              let m;
+              while ((m = toolPattern.exec(responseText)) !== null) {
+                let args: Record<string, string> = {};
+                try { args = JSON.parse(m[2]); } catch {}
+                let output: string;
+                try { output = await executeTool(m[1], args, workspaceRoot); } catch { output = ''; }
+                inlineResults.push(`<tool_result>\n<name>${m[1]}</name>\n<result>${output}</result>\n</tool_result>`);
+              }
+              if (inlineResults.length > 0) {
+                chatMessages.push({
+                  role: 'user',
+                  content: inlineResults.join('\n\n'),
+                });
+              }
+            }
           }
 
           if (runId) {
@@ -492,7 +569,8 @@ When you need to use a tool, output the <tool_use> block. The system will execut
           emit('content', { delta: `\n\nAgent Error: ${msg}` });
           emit('done', {});
         } finally {
-          controller.close();
+          closed = true;
+          try { controller.close(); } catch {}
         }
       },
     });

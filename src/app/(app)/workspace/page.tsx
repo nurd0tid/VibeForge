@@ -19,10 +19,11 @@ import remarkGfm from 'remark-gfm';
 let globalAiAbortController: AbortController | null = null;
 let cancelDiffAnimation: (() => void) | null = null;
 
-// Animates the Monaco DiffEditor modified pane LOCALLY (no Zustand re-renders).
+// Animates the Monaco DiffEditor — streams content line-by-line into the diff view.
 function startLiveDiffAnimation(path: string, toolName: string, args: Record<string, unknown>) {
   if (cancelDiffAnimation) { cancelDiffAnimation(); cancelDiffAnimation = null; }
   const store = useWorkspaceStore.getState();
+  let cancelled = false;
 
   if (toolName === 'edit_file') {
     const oldStr = String(args.old_string || '');
@@ -33,20 +34,41 @@ function startLiveDiffAnimation(path: string, toolName: string, args: Record<str
     const prefix = currentContent.substring(0, insertPos);
     const suffix = currentContent.substring(insertPos + oldStr.length);
     const finalModified = prefix + newStr + suffix;
+    const lines = newStr.split('\n');
+    let lineIdx = 0;
     store.setPendingDiff(path, currentContent, prefix + suffix);
-    const timer = setTimeout(() => {
-      store.setPendingDiff(path, currentContent, finalModified);
-      cancelDiffAnimation = null;
-    }, 300);
-    cancelDiffAnimation = () => { clearTimeout(timer); store.setPendingDiff(path, currentContent, finalModified); };
+    const tick = () => {
+      if (cancelled) return;
+      lineIdx = Math.min(lineIdx + 1, lines.length);
+      const partial = lines.slice(0, lineIdx).join('\n');
+      store.setPendingDiff(path, currentContent, prefix + partial + (lineIdx < lines.length ? '' : '') + suffix);
+      if (lineIdx < lines.length) {
+        setTimeout(tick, Math.max(20, Math.min(80, 800 / lines.length)));
+      } else {
+        store.setPendingDiff(path, currentContent, finalModified);
+        cancelDiffAnimation = null;
+      }
+    };
+    setTimeout(tick, 50);
+    cancelDiffAnimation = () => { cancelled = true; store.setPendingDiff(path, currentContent, finalModified); };
   } else if (toolName === 'write_file') {
     const content = String(args.content || '');
+    const lines = content.split('\n');
+    let lineIdx = 0;
     store.setPendingDiff(path, '', '');
-    const timer = setTimeout(() => {
-      store.setPendingDiff(path, '', content);
-      cancelDiffAnimation = null;
-    }, 300);
-    cancelDiffAnimation = () => { clearTimeout(timer); store.setPendingDiff(path, '', content); };
+    const tick = () => {
+      if (cancelled) return;
+      lineIdx = Math.min(lineIdx + 1, lines.length);
+      const partial = lines.slice(0, lineIdx).join('\n');
+      store.setPendingDiff(path, '', partial);
+      if (lineIdx < lines.length) {
+        setTimeout(tick, Math.max(15, Math.min(60, 600 / lines.length)));
+      } else {
+        cancelDiffAnimation = null;
+      }
+    };
+    setTimeout(tick, 50);
+    cancelDiffAnimation = () => { cancelled = true; store.setPendingDiff(path, '', content); };
   }
 }
 import { toast } from 'sonner';
@@ -782,22 +804,7 @@ function ToolCallStep({ step }: { step: AgentStep }) {
   const isFinished = !!step.toolOutput;
   const isEditFile = step.toolName === 'edit_file';
   const isWriteFile = step.toolName === 'write_file';
-  const { approvalMode, setPendingDiff, clearPendingDiff } = useWorkspaceStore();
-
-  useEffect(() => {
-    if (isFinished && isEditFile && !step.isError && editStatus === null) {
-      const path = String(step.toolArgs?.path || '');
-      const oldStr = String(step.toolArgs?.old_string || '');
-      const newStr = String(step.toolArgs?.new_string || '');
-      if (path && oldStr) {
-        const currentContent = useWorkspaceStore.getState().openFiles.find(f => f.path === path)?.content || '';
-        if (currentContent.includes(newStr)) {
-          setPendingDiff(path, currentContent.replace(newStr, oldStr), currentContent);
-        }
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFinished, isEditFile, step.isError]);
+  const { approvalMode, clearPendingDiff } = useWorkspaceStore();
 
   useEffect(() => {
     if (isFinished && (isEditFile || isWriteFile) && !step.isError && approvalMode === 'auto') {
@@ -806,7 +813,7 @@ function ToolCallStep({ step }: { step: AgentStep }) {
         const timer = setTimeout(() => {
           useWorkspaceStore.getState().markFileTag(path, null);
           useWorkspaceStore.getState().clearPendingDiff(path);
-        }, 3000);
+        }, 4000);
         return () => clearTimeout(timer);
       }
     }
@@ -1739,8 +1746,11 @@ export default function WorkspacePage() {
                 if ((data.name === 'edit_file' || data.name === 'write_file') && data.args?.path) {
                   const _fp = String(data.args.path);
                   const _fn = _fp.split(/[/\\]/).pop() || 'file';
-                  if (data.name === 'write_file') useWorkspaceStore.getState().openFile(_fp, _fn, '');
-                  else handleFileClick(_fp, _fn);
+                  if (data.name === 'write_file') {
+                    useWorkspaceStore.getState().openFile(_fp, _fn, '');
+                  } else {
+                    await handleFileClick(_fp, _fn);
+                  }
                   startLiveDiffAnimation(_fp, data.name, data.args);
                 }
               } else if (eventType === 'tool_result') {
@@ -1750,12 +1760,28 @@ export default function WorkspacePage() {
                   targetStep.isError = data.isError;
                   if (!data.isError && targetStep.toolArgs?.path) {
                     const toolName = targetStep.toolName || '';
-                      if (toolName === 'edit_file' || toolName === 'write_file') {
+                    if (toolName === 'edit_file' || toolName === 'write_file') {
                       if (cancelDiffAnimation) { cancelDiffAnimation(); cancelDiffAnimation = null; }
                       const fp = String(targetStep.toolArgs.path);
                       const fn = fp.split(/[/\\]/).pop() || 'file';
-                      handleFileClick(fp, fn);
-                      markFileTag(fp, toolName === 'write_file' ? 'created' : 'edited');
+                      try {
+                        const res = await fetch(`/api/workspace/file?path=${encodeURIComponent(fp)}`);
+                        if (res.ok) {
+                          const fileData = await res.json();
+                          const newContent = fileData.content || '';
+                          const store = useWorkspaceStore.getState();
+                          const existing = store.openFiles.find(f => f.path === fp);
+                          if (existing) {
+                            store.updateFileContent(fp, newContent);
+                            store.markFileSaved(fp);
+                          } else {
+                            store.openFile(fp, fn, newContent);
+                          }
+                          store.clearPendingDiff(fp);
+                          store.markFileTag(fp, toolName === 'write_file' ? 'created' : 'edited');
+                          store.setActiveFile(fp);
+                        }
+                      } catch {}
                       if (toolName === 'write_file') refetchTree();
                     }
                   }
@@ -2025,8 +2051,11 @@ export default function WorkspacePage() {
                 if ((data.name === 'edit_file' || data.name === 'write_file') && data.args?.path) {
                   const _fp = String(data.args.path);
                   const _fn = _fp.split(/[/\\]/).pop() || 'file';
-                  if (data.name === 'write_file') useWorkspaceStore.getState().openFile(_fp, _fn, '');
-                  else handleFileClick(_fp, _fn);
+                  if (data.name === 'write_file') {
+                    useWorkspaceStore.getState().openFile(_fp, _fn, '');
+                  } else {
+                    await handleFileClick(_fp, _fn);
+                  }
                   startLiveDiffAnimation(_fp, data.name, data.args);
                 }
               } else if (eventType === 'tool_result') {
@@ -2036,12 +2065,28 @@ export default function WorkspacePage() {
                   targetStep.isError = data.isError;
                   if (!data.isError && targetStep.toolArgs?.path) {
                     const toolName = targetStep.toolName || '';
-                      if (toolName === 'edit_file' || toolName === 'write_file') {
+                    if (toolName === 'edit_file' || toolName === 'write_file') {
                       if (cancelDiffAnimation) { cancelDiffAnimation(); cancelDiffAnimation = null; }
                       const fp = String(targetStep.toolArgs.path);
                       const fn = fp.split(/[/\\]/).pop() || 'file';
-                      handleFileClick(fp, fn);
-                      markFileTag(fp, toolName === 'write_file' ? 'created' : 'edited');
+                      try {
+                        const res = await fetch(`/api/workspace/file?path=${encodeURIComponent(fp)}`);
+                        if (res.ok) {
+                          const fileData = await res.json();
+                          const newContent = fileData.content || '';
+                          const store = useWorkspaceStore.getState();
+                          const existing = store.openFiles.find(f => f.path === fp);
+                          if (existing) {
+                            store.updateFileContent(fp, newContent);
+                            store.markFileSaved(fp);
+                          } else {
+                            store.openFile(fp, fn, newContent);
+                          }
+                          store.clearPendingDiff(fp);
+                          store.markFileTag(fp, toolName === 'write_file' ? 'created' : 'edited');
+                          store.setActiveFile(fp);
+                        }
+                      } catch {}
                       if (toolName === 'write_file') refetchTree();
                     }
                   }

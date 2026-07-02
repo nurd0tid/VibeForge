@@ -581,10 +581,12 @@ function FileTreeNode({
   node,
   depth,
   onFileClick,
+  onContextMenu: onCtxMenu,
 }: {
   node: FileNode;
   depth: number;
   onFileClick: (path: string, name: string) => void;
+  onContextMenu?: (e: React.MouseEvent, path: string, isDir: boolean) => void;
 }) {
   const { expandedFolders, toggleFolder, activeFilePath, collapseAllTrigger } = useWorkspaceStore();
   
@@ -611,6 +613,7 @@ function FileTreeNode({
           className={`w-full flex items-center gap-1.5 min-h-[26px] leading-[1.5] hover:bg-[#2a2d2e] transition-colors ${isIgnored ? 'opacity-50' : 'text-[#cccccc]'}`}
           style={{ paddingLeft: `${depth * 16 + 8}px` }}
           onClick={() => toggleFolder(node.path, !isExpanded)}
+          onContextMenu={(e) => onCtxMenu?.(e, node.path, true)}
         >
           {isExpanded ? (
             <ChevronDown className="size-3 flex-shrink-0 text-[#cccccc]" />
@@ -632,6 +635,7 @@ function FileTreeNode({
                 node={child}
                 depth={depth + 1}
                 onFileClick={onFileClick}
+                onContextMenu={onCtxMenu}
               />
             ))}
           </div>
@@ -649,6 +653,7 @@ function FileTreeNode({
       }`}
       style={{ paddingLeft: `${depth * 16 + 24}px` }}
       onClick={() => onFileClick(node.path, node.name)}
+      onContextMenu={(e) => onCtxMenu?.(e, node.path, false)}
     >
       <FileTypeIcon name={node.name} />
       <span className="text-[13px] text-ellipsis overflow-hidden whitespace-nowrap text-left">{node.name}</span>
@@ -791,21 +796,21 @@ function ToolCallStep({ step }: { step: AgentStep }) {
   const [showSideBySide, setShowSideBySide] = useState(false);
 
   const toolLabel = isEditFile
-    ? 'Editing file'
+    ? 'AI Assistant wants to edit this file:'
     : isWriteFile
-    ? 'Creating file'
+    ? 'AI Assistant wants to create this file:'
     : step.toolName === 'read_file'
-    ? 'Reading file'
+    ? 'Read file:'
     : step.toolName === 'list_directory'
-    ? 'Browsing folder'
+    ? 'Visited folder:'
     : step.toolName === 'run_command'
-    ? 'Running command'
+    ? 'Ran command:'
     : step.toolName === 'memory_list'
-    ? 'Listing memory bank'
+    ? 'Indexed memory bank'
     : step.toolName === 'memory_read'
-    ? 'Reading memory'
+    ? 'Read memory file:'
     : step.toolName === 'memory_write'
-    ? 'Updating memory'
+    ? 'Updated memory file:'
     : step.toolName;
 
   return (
@@ -965,12 +970,15 @@ function AiMessageBubble({ role, content, steps, model, provider }: { role: stri
           <div className="flex flex-col gap-1 mx-3 mt-2">
             {steps.map((step, idx) => {
               if (step.type === 'thought') {
+                const isActive = !step.toolOutput && idx === steps.length - 1;
                 return (
                   <details key={idx} className="group">
                     <summary className="flex items-center gap-1 text-[10px] text-[#888] hover:text-[#cccccc] transition-colors cursor-pointer select-none">
                       <ChevronRight className="size-3 group-open:hidden" />
                       <ChevronDown className="size-3 hidden group-open:block" />
-                      <span className="italic">Thinking...</span>
+                      <span className={isActive ? 'vibeforge-wave-text' : 'italic text-[#666]'}>
+                        {isActive ? 'Thinking...' : 'Thought'}
+                      </span>
                     </summary>
                     <div className="mt-1 mb-1 text-[10px] text-[#777] italic bg-[#1a1a1a] rounded p-2 border border-[#333]">
                       {step.text}
@@ -1198,6 +1206,8 @@ export default function WorkspacePage() {
   const decorationsRef = useRef<any>(null);
 
   const [tabContextMenu, setTabContextMenu] = useState<{ path: string; x: number; y: number } | null>(null);
+  const [explorerCtxMenu, setExplorerCtxMenu] = useState<{ path: string; isDir: boolean; x: number; y: number } | null>(null);
+  const [clipboardPath, setClipboardPath] = useState<string | null>(null);
 
   const activeFile = openFiles.find((f) => f.path === activeFilePath);
 
@@ -1962,6 +1972,10 @@ export default function WorkspacePage() {
                         node={node}
                         depth={0}
                         onFileClick={handleFileClick}
+                        onContextMenu={(e, path, isDir) => {
+                          e.preventDefault();
+                          setExplorerCtxMenu({ path, isDir, x: e.clientX, y: e.clientY });
+                        }}
                       />
                     ))
                   )}
@@ -2128,7 +2142,7 @@ export default function WorkspacePage() {
                       { label: 'Close', action: () => { closeFile(tabContextMenu.path); setTabContextMenu(null); } },
                       { label: 'Close Others', action: () => { closeOtherFiles(tabContextMenu.path); setTabContextMenu(null); } },
                       { label: 'Close All', action: () => { closeAllFiles(); setTabContextMenu(null); } },
-                      null, // divider
+                      null,
                       { label: 'Copy Path', action: () => { navigator.clipboard.writeText(tabContextMenu.path); setTabContextMenu(null); } },
                     ].map((item, idx) =>
                       item === null ? (
@@ -2137,6 +2151,77 @@ export default function WorkspacePage() {
                         <button
                           key={item.label}
                           className="w-full text-left px-3 py-1.5 hover:bg-[#094771] transition-colors"
+                          onClick={item.action}
+                        >
+                          {item.label}
+                        </button>
+                      )
+                    )}
+                  </div>
+                )}
+
+                {/* Explorer Context Menu */}
+                {explorerCtxMenu && (
+                  <div
+                    className="fixed z-50 bg-[#252526] border border-[#3a3a3a] rounded shadow-xl text-xs text-[#cccccc] py-1 min-w-[200px]"
+                    style={{ top: explorerCtxMenu.y, left: explorerCtxMenu.x }}
+                    onMouseLeave={() => setExplorerCtxMenu(null)}
+                  >
+                    {[
+                      explorerCtxMenu.isDir ? { label: 'New File', action: async () => {
+                        const name = window.prompt('File name:');
+                        if (!name?.trim()) return;
+                        const fp = `${explorerCtxMenu.path}/${name.trim()}`;
+                        await fetch('/api/workspace/file', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: fp, content: '' }) });
+                        refetchTree();
+                        setExplorerCtxMenu(null);
+                      }} : null,
+                      explorerCtxMenu.isDir ? { label: 'New Folder', action: async () => {
+                        const name = window.prompt('Folder name:');
+                        if (!name?.trim()) return;
+                        await fetch('/api/workspace/terminal/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command: `mkdir -p "${explorerCtxMenu.path}/${name.trim()}"`, cwd: projectPath }) });
+                        refetchTree();
+                        setExplorerCtxMenu(null);
+                      }} : null,
+                      explorerCtxMenu.isDir ? null : null,
+                      { label: 'Rename', action: async () => {
+                        const parts = explorerCtxMenu.path.split(/[/\\]/);
+                        const oldName = parts[parts.length - 1];
+                        const newName = window.prompt('New name:', oldName);
+                        if (!newName?.trim() || newName === oldName) return;
+                        const dir = parts.slice(0, -1).join('/');
+                        const newPath = `${dir}/${newName.trim()}`;
+                        await fetch('/api/workspace/terminal/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command: `mv "${explorerCtxMenu.path}" "${newPath}"`, cwd: projectPath }) });
+                        refetchTree();
+                        setExplorerCtxMenu(null);
+                      }},
+                      !explorerCtxMenu.isDir ? { label: 'Duplicate', action: async () => {
+                        const parts = explorerCtxMenu.path.split(/[/\\]/);
+                        const oldName = parts[parts.length - 1];
+                        const ext = oldName.includes('.') ? '.' + oldName.split('.').pop() : '';
+                        const base = ext ? oldName.slice(0, -ext.length) : oldName;
+                        const newName = `${base}_copy${ext}`;
+                        const dir = parts.slice(0, -1).join('/');
+                        await fetch('/api/workspace/terminal/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command: `cp "${explorerCtxMenu.path}" "${dir}/${newName}"`, cwd: projectPath }) });
+                        refetchTree();
+                        setExplorerCtxMenu(null);
+                      }} : null,
+                      { label: 'Copy Path', action: () => { navigator.clipboard.writeText(explorerCtxMenu.path); setExplorerCtxMenu(null); }},
+                      null,
+                      { label: 'Delete', action: async () => {
+                        const name = explorerCtxMenu.path.split(/[/\\]/).pop();
+                        if (!window.confirm(`Delete "${name}"? This cannot be undone.`)) return;
+                        await fetch('/api/workspace/terminal/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command: explorerCtxMenu.isDir ? `rm -rf "${explorerCtxMenu.path}"` : `rm -f "${explorerCtxMenu.path}"`, cwd: projectPath }) });
+                        refetchTree();
+                        setExplorerCtxMenu(null);
+                      }},
+                    ].filter(Boolean).map((item: any, idx: number) =>
+                      item === null ? (
+                        <div key={idx} className="h-px bg-[#3a3a3a] my-1" />
+                      ) : (
+                        <button
+                          key={item.label}
+                          className={`w-full text-left px-3 py-1.5 hover:bg-[#094771] transition-colors ${item.label === 'Delete' ? 'text-[#c74e39]' : ''}`}
                           onClick={item.action}
                         >
                           {item.label}
@@ -2501,7 +2586,7 @@ export default function WorkspacePage() {
               {isAgentRunning && (
                 <div className="flex items-center gap-2 text-xs text-[#888]">
                   <Loader2 className="size-3 animate-spin text-[#4ec9b0]" />
-                  <span className="text-[10px]">🤔 {agentStatusText}</span>
+                  <span className="text-[10px] vibeforge-wave-text">{agentStatusText}</span>
                 </div>
               )}
               <div ref={aiEndRef} />

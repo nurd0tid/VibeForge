@@ -9,7 +9,7 @@ import { promisify } from 'util';
 
 const execAsync = promisify(exec);
 
-async function executeTool(name: string, args: Record<string, string>, projectRoot: string): Promise<string> {
+async function executeTool(name: string, args: Record<string, string>, projectRoot: string, activeProjectId: string | null): Promise<string> {
   const resolve = (p: string) => path.resolve(projectRoot, p.replace(/^\//, ''));
 
   switch (name) {
@@ -83,9 +83,9 @@ async function executeTool(name: string, args: Record<string, string>, projectRo
     }
     case 'nocodb_create_task': {
       try {
-        const projectId = args.project_id || 1;
+        const resolvedProjectId = args.project_id || activeProjectId || '1';
         const rawTask = {
-          project_id: projectId,
+          project_id: resolvedProjectId,
           title: args.title,
           description: args.description || '',
           status: args.status || 'todo',
@@ -97,14 +97,14 @@ async function executeTool(name: string, args: Record<string, string>, projectRo
         };
         const recordData = toNocoDBFields(rawTask, TASK_FIELD_MAP);
         const result = await createRecord<{ Id?: number }>('tasks', recordData);
-        return `Successfully created NocoDB Task record (ID: ${result.Id || 'unknown'})`;
+        return `Successfully created NocoDB Task record (ID: ${result.Id || 'unknown'}, Project ID: ${resolvedProjectId})`;
       } catch (e: unknown) { return `Error creating NocoDB task: ${e instanceof Error ? e.message : String(e)}`; }
     }
     case 'nocodb_create_schedule': {
       try {
-        const projectId = args.project_id || 1; 
+        const resolvedProjectId = args.project_id || activeProjectId || '1';
         const rawSchedule = {
-          project_id: projectId,
+          project_id: resolvedProjectId,
           name: args.name,
           description: args.description || '',
           cron_expression: args.cron_expression || '',
@@ -114,7 +114,7 @@ async function executeTool(name: string, args: Record<string, string>, projectRo
         };
         const recordData = toNocoDBFields(rawSchedule, SCHEDULE_FIELD_MAP);
         const result = await createRecord<{ Id?: number }>('schedules', recordData);
-        return `Successfully created NocoDB Schedule record (ID: ${result.Id || 'unknown'})`;
+        return `Successfully created NocoDB Schedule record (ID: ${result.Id || 'unknown'}, Project ID: ${resolvedProjectId})`;
       } catch (e: unknown) { return `Error creating NocoDB schedule: ${e instanceof Error ? e.message : String(e)}`; }
     }
     default: return `Unknown tool: ${name}`;
@@ -497,7 +497,7 @@ When you need to use a tool, output the <tool_use> block. The system will execut
                 let output: string;
                 let isError = false;
                 try {
-                  output = await executeTool(toolName, toolArgs, workspaceRoot);
+                  output = await executeTool(toolName, toolArgs, workspaceRoot, projectId);
                 } catch (e: unknown) {
                   console.error('Inline tool execution failed:', e);
                   output = `Error: ${e instanceof Error ? e.message : String(e)}`;
@@ -570,7 +570,7 @@ When you need to use a tool, output the <tool_use> block. The system will execut
                 let output: string;
                 let isError = false;
                 try {
-                  output = await executeTool(tc.name, tc.args, workspaceRoot);
+                  output = await executeTool(tc.name, tc.args, workspaceRoot, projectId);
                 } catch (e: unknown) {
                   console.error('Tool execution failed:', e);
                   output = `Error: ${e instanceof Error ? e.message : String(e)}`;

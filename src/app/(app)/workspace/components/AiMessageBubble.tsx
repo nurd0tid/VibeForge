@@ -384,9 +384,9 @@ export const AiMessageBubble = memo(function AiMessageBubble({ role, content, st
         {steps && steps.length > 0 && (() => {
           const allFinished = steps.every(s => s.type === 'thought' || !!s.toolOutput);
           const toolSteps = steps.filter(s => s.type === 'tool_call');
-          const isStreamingDone = allFinished && content && toolSteps.length > 0;
+          const isActivelyStreaming = isLast && !allFinished;
 
-          if (isStreamingDone) {
+          if (!isActivelyStreaming && content && toolSteps.length > 0) {
             return null;
           }
 
@@ -428,8 +428,9 @@ export const AiMessageBubble = memo(function AiMessageBubble({ role, content, st
           const toolSteps = steps.filter(s => s.type === 'tool_call');
           const readSteps = toolSteps.filter(s => s.toolName === 'read_file');
           const searchSteps = toolSteps.filter(s => s.toolName === 'list_directory');
+          const isActivelyStreaming = isLast && !allFinished;
 
-          if (!(allFinished && content && toolSteps.length > 0)) return null;
+          if (isActivelyStreaming || !content || toolSteps.length === 0) return null;
 
           return (
             <details className="mx-3 mt-1 mb-2 group">

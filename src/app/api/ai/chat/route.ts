@@ -1,6 +1,6 @@
 import { getRecord, createRecord, updateRecord } from '@/lib/nocodb';
 import { getProviderLocalConfig, resolveApiKey } from '@/lib/local-config';
-import { getField } from '@/lib/nocodb-fields';
+import { getField, TASK_FIELD_MAP, SCHEDULE_FIELD_MAP, toNocoDBFields } from '@/lib/nocodb-fields';
 import type { Provider } from '@/types';
 import fs from 'fs/promises';
 import path from 'path';
@@ -83,8 +83,7 @@ async function executeTool(name: string, args: Record<string, string>, projectRo
     }
     case 'nocodb_create_task': {
       try {
-        const { TASK_FIELD_MAP, toNocoDBFields } = await import('@/lib/nocodb-fields');
-        const projectId = args.project_id || 1; // Fallback or read from args
+        const projectId = args.project_id || 1;
         const rawTask = {
           project_id: projectId,
           title: args.title,
@@ -103,7 +102,6 @@ async function executeTool(name: string, args: Record<string, string>, projectRo
     }
     case 'nocodb_create_schedule': {
       try {
-        const { SCHEDULE_FIELD_MAP, toNocoDBFields } = await import('@/lib/nocodb-fields');
         const projectId = args.project_id || 1; 
         const rawSchedule = {
           project_id: projectId,
@@ -479,6 +477,7 @@ When you need to use a tool, output the <tool_use> block. The system will execut
 
             // Stream LLM response — detect tool calls inline, execute them sequentially
             const realtimeToolCount = { n: 0 };
+            const inlineToolResults: string[] = [];
             
             const streamRes = await readStreamWithEmit(
               llmRes.body,
@@ -500,11 +499,13 @@ When you need to use a tool, output the <tool_use> block. The system will execut
                 try {
                   output = await executeTool(toolName, toolArgs, workspaceRoot);
                 } catch (e: unknown) {
+                  console.error('Inline tool execution failed:', e);
                   output = `Error: ${e instanceof Error ? e.message : String(e)}`;
                   isError = true;
                 }
                 
                 emit('tool_result', { id: callId, name: toolName, output: output.slice(0, 2000), isError });
+                inlineToolResults.push(`<tool_result>\n<name>${toolName}</name>\n<result>${output}</result>\n</tool_result>`);
               }
             );
             const responseText = streamRes.fullText;
@@ -559,7 +560,9 @@ When you need to use a tool, output the <tool_use> block. The system will execut
 
             const toolResultParts: string[] = [];
 
-            if (inlineToolsExecuted === 0 && toolCalls.length > 0) {
+            if (inlineToolsExecuted > 0) {
+              toolResultParts.push(...inlineToolResults);
+            } else if (toolCalls.length > 0) {
               for (const tc of toolCalls) {
                 const callId = `call_${Date.now()}_${tc.name}`;
                 emit('tool_call', { id: callId, name: tc.name, args: tc.args });
@@ -569,18 +572,12 @@ When you need to use a tool, output the <tool_use> block. The system will execut
                 try {
                   output = await executeTool(tc.name, tc.args, workspaceRoot);
                 } catch (e: unknown) {
+                  console.error('Tool execution failed:', e);
                   output = `Error: ${e instanceof Error ? e.message : String(e)}`;
                   isError = true;
                 }
 
                 emit('tool_result', { id: callId, name: tc.name, output: output.slice(0, 2000), isError });
-                toolResultParts.push(`<tool_result>\n<name>${tc.name}</name>\n<result>${output}</result>\n</tool_result>`);
-              }
-            } else {
-              for (const tc of toolCalls) {
-                const args = tc.args || {};
-                let output: string;
-                try { output = await executeTool(tc.name, args, workspaceRoot); } catch { output = ''; }
                 toolResultParts.push(`<tool_result>\n<name>${tc.name}</name>\n<result>${output}</result>\n</tool_result>`);
               }
             }
@@ -590,23 +587,6 @@ When you need to use a tool, output the <tool_use> block. The system will execut
                 role: 'user',
                 content: toolResultParts.join('\n\n'),
               });
-            } else if (inlineToolsExecuted > 0) {
-              const inlineResults: string[] = [];
-              const toolPattern = /<tool_use>\s*<name>([\w_]+)<\/name>\s*<args>([\s\S]*?)<\/args>\s*<\/tool_use>/g;
-              let m;
-              while ((m = toolPattern.exec(responseText)) !== null) {
-                let args: Record<string, string> = {};
-                try { args = JSON.parse(m[2]); } catch {}
-                let output: string;
-                try { output = await executeTool(m[1], args, workspaceRoot); } catch { output = ''; }
-                inlineResults.push(`<tool_result>\n<name>${m[1]}</name>\n<result>${output}</result>\n</tool_result>`);
-              }
-              if (inlineResults.length > 0) {
-                chatMessages.push({
-                  role: 'user',
-                  content: inlineResults.join('\n\n'),
-                });
-              }
             }
           }
 

@@ -49,6 +49,7 @@ async function nocodbFetch<T>(
 ): Promise<T> {
   const res = await fetch(url, {
     ...options,
+    signal: AbortSignal.timeout(15000), // 15 second timeout to prevent hanging
     headers: {
       'Content-Type': 'application/json',
       'xc-token': API_TOKEN,

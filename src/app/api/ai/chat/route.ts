@@ -81,6 +81,44 @@ async function executeTool(name: string, args: Record<string, string>, projectRo
         return `Successfully wrote to memory file ${args.file}`;
       } catch (e: unknown) { return `Error writing memory file: ${e instanceof Error ? e.message : String(e)}`; }
     }
+    case 'nocodb_create_task': {
+      try {
+        const { TASK_FIELD_MAP, toNocoDBFields } = await import('@/lib/nocodb-fields');
+        const projectId = args.project_id || 1; // Fallback or read from args
+        const rawTask = {
+          project_id: projectId,
+          title: args.title,
+          description: args.description || '',
+          status: args.status || 'todo',
+          priority: args.priority || 'medium',
+          type: args.type || 'feature',
+          estimate_days: args.estimate_days || null,
+          estimate_hours: args.estimate_hours || null,
+          acceptance_criteria: args.acceptance_criteria || ''
+        };
+        const recordData = toNocoDBFields(rawTask, TASK_FIELD_MAP);
+        const result = await createRecord<{ Id?: number }>('tasks', recordData);
+        return `Successfully created NocoDB Task record (ID: ${result.Id || 'unknown'})`;
+      } catch (e: unknown) { return `Error creating NocoDB task: ${e instanceof Error ? e.message : String(e)}`; }
+    }
+    case 'nocodb_create_schedule': {
+      try {
+        const { SCHEDULE_FIELD_MAP, toNocoDBFields } = await import('@/lib/nocodb-fields');
+        const projectId = args.project_id || 1; 
+        const rawSchedule = {
+          project_id: projectId,
+          name: args.name,
+          description: args.description || '',
+          cron_expression: args.cron_expression || '',
+          is_active: args.is_active === 'true' || args.is_active === '1' ? true : false,
+          last_run: args.last_run || null,
+          next_run: args.next_run || null
+        };
+        const recordData = toNocoDBFields(rawSchedule, SCHEDULE_FIELD_MAP);
+        const result = await createRecord<{ Id?: number }>('schedules', recordData);
+        return `Successfully created NocoDB Schedule record (ID: ${result.Id || 'unknown'})`;
+      } catch (e: unknown) { return `Error creating NocoDB schedule: ${e instanceof Error ? e.message : String(e)}`; }
+    }
     default: return `Unknown tool: ${name}`;
   }
 }
@@ -279,7 +317,15 @@ TOOLS AVAILABLE (use these to interact with the project):
    Format: <tool_use><name>memory_read</name><args>{"file": "activeContext.md"}</args></tool_use>
 
 8. memory_write — Write or update a memory bank file
-   Format: <tool_use><name>memory_write</name><args>{"file": "activeContext.md", "content": "## Current Focus\n..."}</args></tool_use>
+   Format: <tool_use><name>memory_write</name><args>{"file": "activeContext.md", "content": "## Current Focus\\n..."}</args></tool_use>
+
+9. nocodb_create_task — Create a task record in NocoDB (persists to the Kanban /tasks page)
+   Args: title (required), description, status (todo/in-progress/done/backlog), priority (low/medium/high/critical), type (feature/bug/chore), estimate_hours, estimate_days, acceptance_criteria, project_id
+   Format: <tool_use><name>nocodb_create_task</name><args>{"title": "Implement auth", "description": "...", "status": "todo", "priority": "high", "type": "feature", "estimate_hours": "4", "acceptance_criteria": "..."}</args></tool_use>
+
+10. nocodb_create_schedule — Create a schedule record in NocoDB (persists to the /schedule page)
+    Args: name (required), description, cron_expression (e.g. "0 9 * * 1-5"), is_active ("true"/"false"), next_run (ISO date), project_id
+    Format: <tool_use><name>nocodb_create_schedule</name><args>{"name": "Daily standup", "description": "...", "cron_expression": "0 9 * * 1-5", "is_active": "true"}</args></tool_use>
 
 RULES:
 - YOU MUST USE TOOLS to interact with files. NEVER guess or make up file contents from memory.
@@ -292,6 +338,26 @@ RULES:
 - If user types UMB, update memory, or sync memory: update all relevant memory files.
 - When you need to create a file, use write_file tool. When you need to edit, use edit_file tool.
 - IMPORTANT: Output your reasoning as normal text FIRST, then output tool_use blocks. Do not mix text inside tool_use blocks.
+
+SKILL INSTRUCTIONS:
+${skill === 'create-task' ? `
+## SKILL: create-task
+You are in task creation mode. When the user references a file with #file.md or provides a plan/epic/description:
+1. Use read_file to read the referenced file.
+2. Parse and break it down into atomic tasks (max 4 hours each).
+3. For each task, call nocodb_create_task with title, description, type, priority, status="todo", estimate_hours, and acceptance_criteria.
+4. After all tasks are saved, summarize what was created (task count, titles, NocoDB IDs).
+5. Tell the user to check the /tasks Kanban board to see the newly created tasks.
+` : ''}
+${skill === 'schedule' ? `
+## SKILL: schedule
+You are in schedule creation mode. When the user references a file with #file.md or provides a plan:
+1. Use read_file to read the referenced file.
+2. Analyze the content and identify recurring schedules, milestones, or time-based tasks.
+3. For each schedule item, call nocodb_create_schedule with name, description, cron_expression (if recurring), next_run (if one-time), and is_active="true".
+4. After all schedules are saved, summarize what was created (count, names, NocoDB IDs).
+5. Tell the user to check the /schedule page to see the newly created schedules.
+` : ''}
 
 When you need to use a tool, output the <tool_use> block. The system will execute it and return the result.`;
 

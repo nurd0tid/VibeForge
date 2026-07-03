@@ -155,7 +155,8 @@ const BOTTOM_TABS = [
 
 const AI_SKILLS = [
   { id: 'planning', label: '@planning', description: 'Generate a task plan' },
-  { id: 'create-task', label: '@create-task', description: 'Create new tasks' },
+  { id: 'create-task', label: '@create-task', description: 'Create tasks in NocoDB from a file or plan' },
+  { id: 'schedule', label: '@schedule', description: 'Create schedule records in NocoDB from a file or plan' },
   { id: 'review-code', label: '@review-code', description: 'Review code changes' },
   { id: 'daily-log', label: '@daily-log', description: 'Write a daily log' },
   { id: 'update-context', label: '@update-context', description: 'Update project context' },

@@ -16,7 +16,7 @@ It is designed to give you complete control and visibility over what your AI age
 - **Integrated Task Management**: A Kanban board with "Play Task" functionality, multi-select batch play, Pending/Done filter tabs, and an AI Task Creator.
 - **Memory Bank**: Command `/init-memory` scaffolds 10 context files (projectBrief, activeContext, decisionLog, etc.) in `.vibeforge/memory-bank/`. The agent reads these before work and updates them after.
 - **Provider Agnostic**: Use any provider! OpenAI, Anthropic, Gemini, OpenRouter, DeepSeek, Mistral, Groq, Ollama, LM Studio, or any OpenAI-compatible endpoint.
-- **NocoDB Persistence**: All your Projects, Tasks, Daily Logs, Weekly Logs, Schedules, and Agent Runs are securely synced to NocoDB (Cloud or Self-Hosted).
+- **NocoDB Persistence**: All your Projects, Tasks, Daily Logs, Weekly Logs, Schedules, and Agent Runs are securely synced to NocoDB (Cloud or Self-Hosted). Use AI skills like `@create-task` and `@schedule` to instantly convert plans into NocoDB records.
 - **Auto/Manual Diff Approval**: Toggle in Settings. Manual mode requires your explicit approval for code changes, while Auto mode applies them instantly.
 - **Context Management**: Visual token usage progress bar, automatic context compaction at 90% threshold, and manual `/compact` command.
 - **MCP Support**: Configure external Model Context Protocol (MCP) servers in Settings to extend the agent's capabilities (e.g., direct docs fetching via Context7).
@@ -124,6 +124,17 @@ pnpm start
 | `/compact` | Compress LLM context |
 | `/mcp-list` | View connected MCP servers |
 | `/init-memory` | Initialize memory bank for current project |
+
+### AI Skills (@ mentions)
+| Skill | Action |
+|-------|--------|
+| `@create-task` | Parse a plan or `#file.md` and create atomic tasks in NocoDB. Tasks appear on the `/tasks` Kanban board. |
+| `@schedule` | Parse a plan or `#file.md` and create schedule records in NocoDB. Schedules appear on the `/schedule` page. |
+| `@planning` | Generate a structured development plan from an objective. |
+| `@review-code` | Review code changes for quality and correctness. |
+| `@debugging` | Debug and fix errors using Doubt-Driven Development. |
+| `@update-memory-bank` | Update the project memory bank (UMB). |
+| `@task-play-workflow` | Execute the full task play workflow. |
 
 ---
 

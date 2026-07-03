@@ -4,12 +4,39 @@ import path from 'path';
 
 const MCP_FILE_PATH = path.join(process.cwd(), '.vibeforge', 'mcp.json');
 
+const DEFAULT_SERVERS = [
+  {
+    name: "sequential-thinking",
+    commandOrUrl: "npx",
+    args: ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+    env: {},
+    status: "Disconnected",
+    enabled: true,
+  },
+];
+
 async function ensureFileExists() {
   try {
     await fs.mkdir(path.dirname(MCP_FILE_PATH), { recursive: true });
-    await fs.access(MCP_FILE_PATH);
+    try {
+      await fs.access(MCP_FILE_PATH);
+      const data = await fs.readFile(MCP_FILE_PATH, 'utf-8');
+      const config = JSON.parse(data);
+      let changed = false;
+      for (const def of DEFAULT_SERVERS) {
+        if (!config.servers.find((s: any) => s.name === def.name)) {
+          config.servers.unshift(def);
+          changed = true;
+        }
+      }
+      if (changed) {
+        await fs.writeFile(MCP_FILE_PATH, JSON.stringify(config, null, 2));
+      }
+    } catch {
+      await fs.writeFile(MCP_FILE_PATH, JSON.stringify({ servers: DEFAULT_SERVERS }, null, 2));
+    }
   } catch {
-    await fs.writeFile(MCP_FILE_PATH, JSON.stringify({ servers: [] }, null, 2));
+    await fs.writeFile(MCP_FILE_PATH, JSON.stringify({ servers: DEFAULT_SERVERS }, null, 2));
   }
 }
 

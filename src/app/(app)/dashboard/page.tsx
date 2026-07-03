@@ -7,6 +7,7 @@ import { useTasks } from '@/features/tasks/hooks';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { FolderKanban, CheckSquare, Clock, AlertTriangle, LayoutDashboard } from 'lucide-react';
+import { getField } from '@/lib/nocodb-fields';
 import { LoadingState } from '@/components/common/LoadingState';
 import { ErrorState } from '@/components/common/ErrorState';
 import { EmptyState } from '@/components/common/EmptyState';
@@ -40,6 +41,8 @@ export default function DashboardPage() {
     ? [...tasksData.list].sort((a, b) => new Date(b.UpdatedAt).getTime() - new Date(a.UpdatedAt).getTime()).slice(0, 5)
     : [];
 
+  const pName = activeProject ? getField(activeProject as any, 'name', 'Name') : '';
+
   if (!hasHydrated) return null;
 
   return (
@@ -49,7 +52,7 @@ export default function DashboardPage() {
           <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
           <p className="text-muted-foreground mt-1">
             {activeProjectId && activeProject 
-              ? `Overview for ${activeProject.name}` 
+              ? `Overview for ${pName}` 
               : 'Overview of all your projects and tasks.'}
           </p>
         </div>

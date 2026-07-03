@@ -1,6 +1,6 @@
 # VibeForge
 
-![VibeForge Banner](./public/logo.png)
+![VibeForge Banner](./public/banner.png)
 
 **VibeForge** is an open-source AI Coding Workspace that combines the power of an IDE (like VS Code), a task manager (like Linear), and an autonomous AI Agent in a single, seamless environment.
 

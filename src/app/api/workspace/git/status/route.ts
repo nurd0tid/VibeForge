@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import path from 'path';
 
 const execAsync = promisify(exec);
 
@@ -30,9 +29,20 @@ export async function GET(request: Request) {
         // ignore
       }
 
-      return NextResponse.json({ branch, changes });
-    } catch (e) {
-      return NextResponse.json({ branch: '', changes: [], error: 'Not a git repository or git not available' });
+      let ahead = 0;
+      let behind = 0;
+      try {
+        const { stdout: abOut } = await execAsync('git rev-list --left-right --count HEAD...@{u}', { cwd: targetPath });
+        const parts = abOut.trim().split(/\s+/);
+        ahead = parseInt(parts[0], 10) || 0;
+        behind = parseInt(parts[1], 10) || 0;
+      } catch {
+        // no upstream or error
+      }
+
+      return NextResponse.json({ branch, changes, ahead, behind });
+    } catch {
+      return NextResponse.json({ branch: '', changes: [], ahead: 0, behind: 0, error: 'Not a git repository or git not available' });
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';

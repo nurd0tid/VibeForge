@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useHasHydrated } from '@/hooks/useHasHydrated';
 import dynamic from 'next/dynamic';
 import { useQuery } from '@tanstack/react-query';
@@ -13,8 +13,17 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from '@/components/ui/resizable';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+
+import { GitSourceControl } from './components/GitSourceControl';
+import { WorkspaceTerminal } from './components/WorkspaceTerminal';
+import { GitDiffPanel } from './components/GitDiffPanel';
+import { FileTreeNode, FileTypeIcon } from './components/FileTreeNode';
+import type { FileNode } from './components/FileTreeNode';
+import { getLanguage, flattenTree, flattenTreePaths } from './components/FileTreeNode';
+import { AiMessageBubble } from './components/AiMessageBubble';
+import { ActiveTodoStrip } from './components/ActiveTodoStrip';
+import { InterruptedTaskBanner } from './components/InterruptedTaskBanner';
+import { ContextUsageBar } from './components/ContextUsageBar';
 
 // Animates the Monaco DiffEditor — streams content line-by-line into the diff view.
 function startLiveDiffAnimation(
@@ -99,14 +108,9 @@ import {
   ListTodo,
   Bot,
   X,
-  ChevronRight,
   ChevronDown,
   FileCode,
-  FileJson,
-  FileText,
-  File as GenericFileIcon,
   FolderOpen,
-  Folder,
   Circle,
   Send,
   Loader2,
@@ -118,440 +122,11 @@ import {
   Cpu,
   CheckCircle2,
   SquareX,
-  XCircle,
-  FilePlus,
-  FileMinus,
-  FileQuestion,
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
-  GitCommit,
   Lock,
   ChevronsUpDown,
   Settings,
-  Pencil,
-  RotateCcw,
-  Brain,
-  Bookmark,
-  Image as ImageIcon,
-  Paintbrush,
-  Globe,
-  Cog,
-  Database,
-  Shield,
-  Hash,
   PanelRightClose,
-  PanelRightOpen,
-  Pin,
-  PinOff
 } from 'lucide-react';
-
-interface GitChange {
-  status: string;
-  file: string;
-}
-
-function GitSourceControl({ projectPath, defaultBranch }: { projectPath: string; defaultBranch: string }) {
-  const [commitMessage, setCommitMessage] = useState('');
-  const [isActionRunning, setIsActionRunning] = useState(false);
-  
-  const { data, isLoading, refetch } = useQuery<{ branch: string; changes: GitChange[]; error?: string }>({
-    queryKey: ['git-status', projectPath],
-    queryFn: async () => {
-      if (!projectPath) return { branch: defaultBranch, changes: [] };
-      const res = await fetch(`/api/workspace/git/status?path=${encodeURIComponent(projectPath)}`);
-      if (!res.ok) return { branch: defaultBranch, changes: [], error: 'Failed to fetch' };
-      return res.json();
-    },
-    enabled: !!projectPath,
-    refetchInterval: 10000,
-  });
-
-  const runGitAction = async (action: 'pull' | 'push' | 'sync' | 'commit') => {
-    if (!projectPath) {
-      toast.error('No project path configured');
-      return;
-    }
-    if (action === 'commit' && !commitMessage.trim()) {
-      toast.error('Commit message is required');
-      return;
-    }
-
-    setIsActionRunning(true);
-    const actionPromise = fetch('/api/workspace/git/action', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action,
-        path: projectPath,
-        message: action === 'commit' ? commitMessage.trim() : undefined,
-      }),
-    });
-
-    toast.promise(actionPromise, {
-      loading: `Running git ${action}...`,
-      success: async (res) => {
-        const body = await res.json();
-        if (!res.ok || !body.ok) {
-          throw new Error(body.error || 'Action failed');
-        }
-        if (action === 'commit') {
-          setCommitMessage('');
-        }
-        refetch();
-        return `Git ${action} succeeded`;
-      },
-      error: (err) => err.message || `Git ${action} failed`,
-    });
-
-    try {
-      await actionPromise;
-    } catch {} finally {
-      setIsActionRunning(false);
-    }
-  };
-
-  const branch = data?.branch || defaultBranch;
-  const changes = data?.changes || [];
-  const gitError = data?.error;
-
-  const staged = changes.filter(c => {
-    const x = c.status[0];
-    return x !== ' ' && x !== '?';
-  });
-  const unstaged = changes.filter(c => {
-    const y = c.status[1];
-    return y !== ' ' && c.status[0] !== '?';
-  });
-  const untracked = changes.filter(c => c.status.trim() === '??');
-
-  const getStatusIcon = (status: string) => {
-    const s = status.trim();
-    if (s.includes('D')) return <FileMinus className="size-3.5 text-[#c74e39]" />;
-    if (s.includes('M')) return <FilePlus className="size-3.5 text-[#e2c08d]" />;
-    if (s.includes('A') || s.includes('?')) return <FilePlus className="size-3.5 text-[#73c991]" />;
-    if (s.includes('R')) return <FilePlus className="size-3.5 text-[#4fc1ff]" />;
-    return <FileQuestion className="size-3.5 text-[#888]" />;
-  };
-
-  const getStatusBadge = (status: string): { letter: string; color: string } => {
-    const s = status.trim();
-    if (s.includes('D')) return { letter: 'D', color: '#c74e39' };
-    if (s.includes('M')) return { letter: 'M', color: '#e2c08d' };
-    if (s.includes('A')) return { letter: 'A', color: '#73c991' };
-    if (s.includes('R')) return { letter: 'R', color: '#4fc1ff' };
-    if (s === '??') return { letter: 'U', color: '#73c991' };
-    return { letter: s[0] || '?', color: '#888' };
-  };
-
-  return (
-    <div className="flex flex-col h-full bg-[#252526]">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-[#1e1e1e]">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-[#bbbbbb]">
-          Source Control
-        </span>
-        <div className="flex items-center gap-1">
-          <button onClick={() => runGitAction('pull')} disabled={isActionRunning} title="Pull" className="text-[#888] hover:text-[#cccccc] transition-colors disabled:opacity-40">
-            <ArrowDown className="size-3.5" />
-          </button>
-          <button onClick={() => runGitAction('push')} disabled={isActionRunning} title="Push" className="text-[#888] hover:text-[#cccccc] transition-colors disabled:opacity-40">
-            <ArrowUp className="size-3.5" />
-          </button>
-          <button onClick={() => runGitAction('sync')} disabled={isActionRunning} title="Sync (Pull + Push)" className="text-[#888] hover:text-[#cccccc] transition-colors disabled:opacity-40">
-            <ArrowUpDown className="size-3.5" />
-          </button>
-          <button onClick={() => refetch()} title="Refresh" className="text-[#888] hover:text-[#cccccc] transition-colors">
-            <RefreshCw className={`size-3 ${isLoading ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
-      </div>
-
-      <div className="px-3 py-2 border-b border-[#1e1e1e] flex items-center gap-2">
-        <GitBranch className="size-3.5 text-[#75beff]" />
-        <span className="text-xs text-[#cccccc] font-mono">{branch}</span>
-      </div>
-
-      <div className="px-2 py-2 border-b border-[#1e1e1e]">
-        <div className="flex gap-1">
-          <input
-            type="text"
-            value={commitMessage}
-            onChange={(e) => setCommitMessage(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') runGitAction('commit');
-            }}
-            placeholder="Commit message"
-            className="flex-1 bg-[#3c3c3c] text-[#cccccc] text-xs px-2 py-1.5 rounded border border-[#3c3c3c] focus:border-[#007acc] outline-none min-w-0"
-          />
-          <button
-            onClick={() => runGitAction('commit')}
-            disabled={isActionRunning || !commitMessage.trim()}
-            title="Commit All"
-            className="bg-[#007acc] text-white text-[10px] px-2 py-1 rounded hover:bg-[#006bb3] transition-colors disabled:opacity-40 flex items-center gap-1 flex-shrink-0"
-          >
-            <GitCommit className="size-3" />
-            Commit
-          </button>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto">
-        {!projectPath ? (
-          <div className="p-4 text-center">
-            <p className="text-xs text-[#666]">No project path configured.</p>
-          </div>
-        ) : gitError && changes.length === 0 ? (
-          <div className="p-4 text-center">
-            <AlertTriangle className="size-6 text-[#cc6633] mx-auto mb-2" />
-            <p className="text-xs text-[#888]">{gitError}</p>
-          </div>
-        ) : changes.length === 0 ? (
-          <div className="p-4 text-center">
-            <CheckCircle2 className="size-6 text-[#73c991] mx-auto mb-2" />
-            <p className="text-xs text-[#888]">Working tree clean</p>
-            <p className="text-[10px] text-[#555] mt-1">No uncommitted changes</p>
-          </div>
-        ) : (
-          <div>
-            {staged.length > 0 && (
-              <>
-                <div className="px-3 py-1.5 text-[10px] text-[#888] uppercase tracking-widest border-b border-[#1e1e1e] flex items-center justify-between">
-                  <span>Staged Changes</span>
-                  <span className="text-[#4ec9b0]">{staged.length}</span>
-                </div>
-                {staged.map((change, i) => (
-                  <div key={`s-${i}`} className="flex items-center gap-2 px-3 py-1 hover:bg-[#2a2d2e] transition-colors cursor-pointer group">
-                    {getStatusIcon(change.status)}
-                    <span className="text-xs text-[#cccccc] truncate flex-1 font-mono">{change.file}</span>
-                    <span className="text-[9px] font-bold font-mono" style={{ color: getStatusBadge(change.status).color }}>{getStatusBadge(change.status).letter}</span>
-                  </div>
-                ))}
-              </>
-            )}
-            {unstaged.length > 0 && (
-              <>
-                <div className="px-3 py-1.5 text-[10px] text-[#888] uppercase tracking-widest border-b border-[#1e1e1e] flex items-center justify-between">
-                  <span>Changes</span>
-                  <span className="text-[#e2c08d]">{unstaged.length}</span>
-                </div>
-                {unstaged.map((change, i) => (
-                  <div key={`u-${i}`} className="flex items-center gap-2 px-3 py-1 hover:bg-[#2a2d2e] transition-colors cursor-pointer group">
-                    {getStatusIcon(change.status)}
-                    <span className="text-xs text-[#cccccc] truncate flex-1 font-mono">{change.file}</span>
-                    <span className="text-[9px] font-bold font-mono" style={{ color: getStatusBadge(change.status).color }}>{getStatusBadge(change.status).letter}</span>
-                  </div>
-                ))}
-              </>
-            )}
-            {untracked.length > 0 && (
-              <>
-                <div className="px-3 py-1.5 text-[10px] text-[#888] uppercase tracking-widest border-b border-[#1e1e1e] flex items-center justify-between">
-                  <span>Untracked Files</span>
-                  <span className="text-[#888]">{untracked.length}</span>
-                </div>
-                {untracked.map((change, i) => (
-                  <div key={`ut-${i}`} className="flex items-center gap-2 px-3 py-1 hover:bg-[#2a2d2e] transition-colors cursor-pointer group">
-                    <FilePlus className="size-3.5 text-[#73c991]" />
-                    <span className="text-xs text-[#cccccc] truncate flex-1 font-mono">{change.file}</span>
-                    <span className="text-[9px] font-bold font-mono text-[#73c991]">U</span>
-                  </div>
-                ))}
-              </>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function WorkspaceTerminal({ cwd: initialCwd }: { cwd: string }) {
-  const [cwd, setCwd] = useState(initialCwd);
-  const [output, setOutput] = useState<{ type: 'command' | 'stdout' | 'stderr' | 'info'; text: string }[]>([
-    { type: 'info', text: `VibeForge Terminal` },
-    { type: 'info', text: 'Type a command and press Enter. Long-running commands supported.' },
-  ]);
-  const [input, setInput] = useState('');
-  const [isRunning, setIsRunning] = useState(false);
-  const [processId, setProcessId] = useState<string | null>(null);
-  const [history, setHistory] = useState<string[]>([]);
-  const [historyIdx, setHistoryIdx] = useState(-1);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const abortRef = useRef<AbortController | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: 'auto' });
-  }, [output]);
-
-  useEffect(() => {
-    if (initialCwd && initialCwd !== cwd) {
-      setCwd(initialCwd);
-      setOutput(prev => [...prev, { type: 'info', text: `cwd: ${initialCwd}` }]);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialCwd]);
-
-  const appendOutput = (type: 'command' | 'stdout' | 'stderr' | 'info', text: string) => {
-    setOutput(prev => [...prev, { type, text }]);
-  };
-
-  const handleKill = async () => {
-    abortRef.current?.abort();
-    if (processId) {
-      try {
-        await fetch('/api/workspace/terminal/run', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'kill', processId }),
-        });
-      } catch {}
-    }
-    setIsRunning(false);
-    setProcessId(null);
-    appendOutput('info', '^C');
-  };
-
-  const handleCommand = async () => {
-    if (!input.trim()) return;
-    const cmd = input.trim();
-    setInput('');
-    setHistoryIdx(-1);
-    setHistory(prev => [cmd, ...prev.slice(0, 99)]);
-    appendOutput('command', `$ ${cmd}`);
-
-    if (cmd === 'clear' || cmd === 'cls') { setOutput([]); return; }
-
-    if (cmd.startsWith('cd ')) {
-      const target = cmd.substring(3).trim();
-      const newCwd = target.match(/^([a-zA-Z]:\\|\/|~)/)
-        ? target
-        : cwd.replace(/\\/g, '/') + '/' + target;
-      setCwd(newCwd);
-      appendOutput('info', newCwd);
-      return;
-    }
-
-    setIsRunning(true);
-    const abort = new AbortController();
-    abortRef.current = abort;
-
-    try {
-      const res = await fetch('/api/workspace/terminal/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: cmd, cwd }),
-        signal: abort.signal,
-      });
-
-      if (!res.ok || !res.body) {
-        const err = await res.json().catch(() => ({ error: 'Request failed' }));
-        appendOutput('stderr', err.error || 'Failed');
-        setIsRunning(false);
-        return;
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const parts = buffer.split('\n\n');
-        buffer = parts.pop() || '';
-        for (const part of parts) {
-          if (!part.trim()) continue;
-          const lines = part.split('\n');
-          const eventLine = lines.find(l => l.startsWith('event:'));
-          const dataLine = lines.find(l => l.startsWith('data:'));
-          if (!eventLine || !dataLine) continue;
-          const event = eventLine.replace('event:', '').trim();
-          const data = JSON.parse(dataLine.replace('data:', '').trim());
-          if (event === 'pid') { setProcessId(data.processId); }
-          else if (event === 'stdout') { appendOutput('stdout', data.text); }
-          else if (event === 'stderr') { appendOutput('stderr', data.text); }
-          else if (event === 'error') { appendOutput('stderr', data.text); }
-          else if (event === 'close') {
-            if (data.code !== 0 && data.code !== null) appendOutput('info', `Exit code: ${data.code}`);
-          }
-        }
-      }
-    } catch (e: any) {
-      if (e.name !== 'AbortError') appendOutput('stderr', e.message || 'Execution failed');
-    } finally {
-      setIsRunning(false);
-      setProcessId(null);
-      abortRef.current = null;
-      inputRef.current?.focus();
-    }
-  };
-
-  return (
-    <div
-      className="flex flex-col h-full bg-[#0e0e0e] font-mono text-xs"
-      onClick={() => inputRef.current?.focus()}
-    >
-      <div className="flex-1 overflow-y-auto p-3 space-y-px">
-        {output.map((line, i) => (
-          <div
-            key={i}
-            className={`whitespace-pre-wrap leading-relaxed ${
-              line.type === 'command' ? 'text-white font-semibold mt-1' :
-              line.type === 'stderr' ? 'text-[#f48771]' :
-              line.type === 'info' ? 'text-[#555] italic' :
-              'text-[#cccccc]'
-            }`}
-          >
-            {line.text}
-          </div>
-        ))}
-        <div ref={scrollRef} />
-      </div>
-      <div className="flex items-center gap-2 px-3 py-2 border-t border-[#1e1e1e] bg-[#0e0e0e] shrink-0">
-        <span className="text-[#4ec9b0] shrink-0 font-bold">
-          {cwd.split(/[/\\]/).pop() || cwd}$
-        </span>
-        <input
-          ref={inputRef}
-          type="text"
-          value={input}
-          onChange={(e) => { setInput(e.target.value); setHistoryIdx(-1); }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') { e.preventDefault(); handleCommand(); }
-            else if (e.key === 'c' && e.ctrlKey) { e.preventDefault(); handleKill(); }
-            else if (e.key === 'ArrowUp') {
-              e.preventDefault();
-              const idx = Math.min(historyIdx + 1, history.length - 1);
-              setHistoryIdx(idx);
-              setInput(history[idx] || '');
-            }
-            else if (e.key === 'ArrowDown') {
-              e.preventDefault();
-              const idx = Math.max(historyIdx - 1, -1);
-              setHistoryIdx(idx);
-              setInput(idx === -1 ? '' : history[idx] || '');
-            }
-          }}
-          disabled={false}
-          placeholder={isRunning ? 'Running... (Ctrl+C to stop)' : ''}
-          className="flex-1 bg-transparent outline-none border-none text-[#cccccc] placeholder:text-[#333]"
-          autoFocus
-          spellCheck={false}
-        />
-        {isRunning && (
-          <button
-            onClick={handleKill}
-            className="shrink-0 text-[9px] text-[#f48771] border border-[#f48771]/30 px-2 py-0.5 rounded hover:bg-[#f48771]/10 transition-colors"
-          >
-            ■ Stop
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
 
 const MonacoEditor = dynamic(
   () => import('@monaco-editor/react').then((m) => m.default),
@@ -562,263 +137,6 @@ const MonacoDiffEditor = dynamic(
   () => import('@monaco-editor/react').then((m) => m.DiffEditor),
   { ssr: false }
 );
-
-function GitDiffPanel({ projectPath, defaultBranch }: { projectPath: string; defaultBranch: string }) {
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [diffContent, setDiffContent] = useState<{ original: string; modified: string } | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-
-  const { data } = useQuery<{ branch: string; changes: GitChange[]; error?: string }>({
-    queryKey: ['git-status', projectPath],
-    queryFn: async () => {
-      if (!projectPath) return { branch: defaultBranch, changes: [] };
-      const res = await fetch(`/api/workspace/git/status?path=${encodeURIComponent(projectPath)}`);
-      if (!res.ok) return { branch: defaultBranch, changes: [], error: 'Failed to fetch' };
-      return res.json();
-    },
-    enabled: !!projectPath,
-    refetchInterval: 10000,
-  });
-
-  const changes = data?.changes || [];
-  const modifiedFiles = changes.filter(c => c.status.trim() !== '??' && c.status.trim() !== 'A').map(c => c.file);
-
-  useEffect(() => {
-    let active = true;
-    if (selectedFile && projectPath) {
-      setTimeout(() => { if (active) setIsLoading(true); }, 0);
-      fetch(`/api/workspace/git/diff?path=${encodeURIComponent(projectPath)}&file=${encodeURIComponent(selectedFile)}`)
-        .then(res => res.json())
-        .then(data => {
-          if (active && !data.error) {
-            setDiffContent(data);
-          }
-        })
-        .finally(() => { if (active) setIsLoading(false); });
-    } else {
-      setTimeout(() => { if (active) setDiffContent(null); }, 0);
-    }
-    return () => { active = false; };
-  }, [selectedFile, projectPath]);
-
-  if (!projectPath) {
-    return <div className="p-3 text-xs text-[#888]">No project path configured.</div>;
-  }
-
-  if (modifiedFiles.length === 0) {
-    return <div className="p-3 text-xs text-[#888]">Working tree clean. Branch: <code className="text-[#4ec9b0]">{data?.branch || defaultBranch}</code></div>;
-  }
-
-  return (
-    <div className="flex flex-col h-full bg-[#1e1e1e]">
-      <div className="flex bg-[#252526] border-b border-[#1e1e1e] overflow-x-auto min-h-[30px] flex-shrink-0 scrollbar-none">
-        {modifiedFiles.map(file => (
-          <button
-            key={file}
-            className={`px-3 py-1.5 text-[11px] font-mono whitespace-nowrap border-r border-[#1e1e1e] transition-colors ${selectedFile === file ? 'bg-[#1e1e1e] text-white border-t-2 border-t-[#4ec9b0]' : 'text-[#888] hover:bg-[#2d2d2d]'}`}
-            onClick={() => setSelectedFile(file)}
-          >
-            {file.split(/[/\\]/).pop()}
-          </button>
-        ))}
-      </div>
-      <div className="flex-1 min-h-0 relative">
-        {!selectedFile ? (
-          <div className="flex items-center justify-center h-full text-xs text-[#555] p-4 text-center select-none">
-            Select a modified file from the tabs above to view its diff
-          </div>
-        ) : isLoading ? (
-          <div className="flex items-center justify-center h-full">
-            <Loader2 className="size-5 animate-spin text-[#888]" />
-          </div>
-        ) : diffContent ? (
-          <MonacoDiffEditor
-            height="100%"
-            language={getLanguage(selectedFile)}
-            theme="vs-dark"
-            original={diffContent.original}
-            modified={diffContent.modified}
-            options={{
-              readOnly: true,
-              minimap: { enabled: false },
-              fontSize: 12,
-              fontFamily: "'JetBrains Mono', 'Geist Mono', 'Fira Code', Menlo, monospace",
-              renderSideBySide: true,
-              scrollBeyondLastLine: false,
-              automaticLayout: true,
-              renderWhitespace: 'selection',
-            }}
-          />
-        ) : (
-          <div className="flex items-center justify-center h-full text-xs text-[#c74e39]">
-            Failed to load diff
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-interface FileNode {
-  name: string;
-  path: string;
-  isDirectory: boolean;
-  children?: FileNode[];
-}
-
-function getLanguage(name: string): string {
-  const ext = name.split('.').pop()?.toLowerCase() || '';
-  const map: Record<string, string> = {
-    ts: 'typescript',
-    tsx: 'typescript',
-    js: 'javascript',
-    jsx: 'javascript',
-    json: 'json',
-    md: 'markdown',
-    css: 'css',
-    scss: 'scss',
-    html: 'html',
-    py: 'python',
-    rs: 'rust',
-    go: 'go',
-    sql: 'sql',
-    yaml: 'yaml',
-    yml: 'yaml',
-    toml: 'toml',
-    sh: 'shell',
-    bash: 'shell',
-    env: 'plaintext',
-    txt: 'plaintext',
-  };
-  return map[ext] || 'plaintext';
-}
-
-function FileTypeIcon({ name, className: extraClass }: { name: string; className?: string }) {
-  const ext = name.split('.').pop()?.toLowerCase() || '';
-  const base = `size-4 flex-shrink-0 ${extraClass || ''}`;
-
-  if (name === 'package.json' || name === 'package-lock.json') return <FileJson className={`${base} text-[#73c991]`} />;
-  if (name === 'tsconfig.json' || name.startsWith('tsconfig')) return <Cog className={`${base} text-[#519aba]`} />;
-  if (name.startsWith('.env')) return <Shield className={`${base} text-[#e2c08d]`} />;
-  if (name === 'pnpm-lock.yaml' || name === 'yarn.lock' || name === 'package-lock.json') return <FileJson className={`${base} text-[#888]`} />;
-  if (name === 'next.config.ts' || name === 'next.config.js' || name === 'next.config.mjs') return <Cog className={`${base} text-[#fff]`} />;
-  if (name === 'tailwind.config.ts' || name === 'tailwind.config.js') return <Paintbrush className={`${base} text-[#38bdf8]`} />;
-  if (name === 'postcss.config.mjs' || name === 'postcss.config.js') return <Cog className={`${base} text-[#dd3a0a]`} />;
-  if (name === 'eslint.config.mjs' || name.startsWith('.eslint')) return <Shield className={`${base} text-[#4b32c3]`} />;
-  if (name === '.gitignore' || name === '.gitattributes') return <GitBranch className={`${base} text-[#f05032]`} />;
-  if (name === 'README.md' || name === 'AGENTS.md' || name === 'CLAUDE.md') return <FileText className={`${base} text-[#519aba]`} />;
-  if (name === 'Dockerfile' || name.startsWith('docker-compose')) return <Database className={`${base} text-[#2496ed]`} />;
-
-  if (['ts', 'mts', 'cts'].includes(ext)) return <FileCode className={`${base} text-[#3178c6]`} />;
-  if (['tsx'].includes(ext)) return <FileCode className={`${base} text-[#61dafb]`} />;
-  if (['js', 'mjs', 'cjs'].includes(ext)) return <FileCode className={`${base} text-[#f7df1e]`} />;
-  if (['jsx'].includes(ext)) return <FileCode className={`${base} text-[#61dafb]`} />;
-  if (['json', 'jsonc'].includes(ext)) return <FileJson className={`${base} text-[#cbcb41]`} />;
-  if (['css'].includes(ext)) return <Hash className={`${base} text-[#563d7c]`} />;
-  if (['scss', 'sass'].includes(ext)) return <Hash className={`${base} text-[#c6538c]`} />;
-  if (['less'].includes(ext)) return <Hash className={`${base} text-[#1d365d]`} />;
-  if (['html', 'htm'].includes(ext)) return <Globe className={`${base} text-[#e44d26]`} />;
-  if (['md', 'mdx'].includes(ext)) return <FileText className={`${base} text-[#519aba]`} />;
-  if (['txt'].includes(ext)) return <FileText className={`${base} text-[#888]`} />;
-  if (['svg', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'bmp'].includes(ext)) return <ImageIcon className={`${base} text-[#a074c4]`} />;
-  if (['yml', 'yaml'].includes(ext)) return <FileCode className={`${base} text-[#cc3e44]`} />;
-  if (['toml'].includes(ext)) return <Cog className={`${base} text-[#9c4221]`} />;
-  if (['sh', 'bash', 'zsh', 'fish'].includes(ext)) return <Terminal className={`${base} text-[#4ec9b0]`} />;
-  if (['py'].includes(ext)) return <FileCode className={`${base} text-[#3572A5]`} />;
-  if (['rs'].includes(ext)) return <FileCode className={`${base} text-[#dea584]`} />;
-  if (['go'].includes(ext)) return <FileCode className={`${base} text-[#00add8]`} />;
-  if (['java'].includes(ext)) return <FileCode className={`${base} text-[#b07219]`} />;
-  if (['php'].includes(ext)) return <FileCode className={`${base} text-[#4F5D95]`} />;
-  if (['rb'].includes(ext)) return <FileCode className={`${base} text-[#701516]`} />;
-  if (['sql'].includes(ext)) return <Database className={`${base} text-[#e38c00]`} />;
-  if (['prisma'].includes(ext)) return <Database className={`${base} text-[#2d3748]`} />;
-
-  return <GenericFileIcon className={`${base} text-[#cccccc]`} />;
-}
-
-const FileTreeNode = memo(function FileTreeNode({
-  node,
-  depth,
-  onFileClick,
-  onContextMenu: onCtxMenu,
-}: {
-  node: FileNode;
-  depth: number;
-  onFileClick: (path: string, name: string) => void;
-  onContextMenu?: (e: React.MouseEvent, path: string, isDir: boolean) => void;
-}) {
-  const { expandedFolders, toggleFolder, activeFilePath, collapseAllTrigger } = useWorkspaceStore();
-  
-  // Default rule: root folder is NOT expanded automatically unless it's in the state explicitly.
-  // The user wanted folders to be default closed: "defaultnya di explorer setiap folder tuh jangan langsung kebuka itu ketutup".
-  const isExpanded = expandedFolders[node.path] ?? false;
-
-  const isActive = !node.isDirectory && activeFilePath === node.path;
-
-  const IGNORED_NAMES = ['node_modules', '.git', '.next', 'dist', 'build', '.cache', '.turbo', '__pycache__', '.DS_Store', 'coverage'];
-  const isIgnored = node.name.startsWith('.') || IGNORED_NAMES.includes(node.name);
-
-  useEffect(() => {
-    if (collapseAllTrigger > 0 && isExpanded) {
-      toggleFolder(node.path, false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [collapseAllTrigger]);
-
-  if (node.isDirectory) {
-    return (
-      <div>
-        <button
-          className={`w-full flex items-center gap-1.5 min-h-[26px] leading-[1.5] hover:bg-[#2a2d2e] transition-colors ${isIgnored ? 'opacity-50' : 'text-[#cccccc]'}`}
-          style={{ paddingLeft: `${depth * 16 + 8}px` }}
-          onClick={() => toggleFolder(node.path, !isExpanded)}
-          onContextMenu={(e) => onCtxMenu?.(e, node.path, true)}
-        >
-          {isExpanded ? (
-            <ChevronDown className="size-3 flex-shrink-0 text-[#cccccc]" />
-          ) : (
-            <ChevronRight className="size-3 flex-shrink-0 text-[#cccccc]" />
-          )}
-          {isExpanded ? (
-            <FolderOpen className="size-4 flex-shrink-0 text-[#dcb67a]" />
-          ) : (
-            <Folder className="size-4 flex-shrink-0 text-[#dcb67a]" />
-          )}
-          <span className="text-[13px] text-ellipsis overflow-hidden whitespace-nowrap text-left">{node.name}</span>
-        </button>
-        {isExpanded && node.children && (
-          <div>
-            {node.children.map((child) => (
-              <FileTreeNode
-                key={child.path}
-                node={child}
-                depth={depth + 1}
-                onFileClick={onFileClick}
-                onContextMenu={onCtxMenu}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <button
-      className={`w-full flex items-center gap-1.5 min-h-[26px] leading-[1.5] transition-colors ${
-        isActive
-          ? 'bg-[#094771] text-white opacity-100'
-          : `hover:bg-[#2a2d2e] ${isIgnored ? 'opacity-50 text-[#cccccc]' : 'text-[#cccccc]'}`
-      }`}
-      style={{ paddingLeft: `${depth * 16 + 24}px` }}
-      onClick={() => onFileClick(node.path, node.name)}
-      onContextMenu={(e) => onCtxMenu?.(e, node.path, false)}
-    >
-      <FileTypeIcon name={node.name} />
-      <span className="text-[13px] text-ellipsis overflow-hidden whitespace-nowrap text-left">{node.name}</span>
-    </button>
-  );
-});
 
 const ACTIVITY_ITEMS = [
   { key: 'explorer' as const, icon: Files, label: 'Explorer' },
@@ -855,559 +173,9 @@ const AI_SKILLS = [
   { id: 'definition-of-done', label: '@definition-of-done', description: 'Verify task meets done criteria' },
 ];
 
-function flattenTree(nodes: FileNode[]): FileNode[] {
-  const result: FileNode[] = [];
-  for (const n of nodes) {
-    if (!n.isDirectory) result.push(n);
-    if (n.children) result.push(...flattenTree(n.children));
-  }
-  return result;
-}
 
-function flattenTreePaths(nodes: FileNode[], prefix = ''): string[] {
-  const result: string[] = [];
-  for (const node of nodes) {
-    const fullPath = prefix ? `${prefix}/${node.name}` : node.name;
-    result.push(fullPath);
-    if (node.isDirectory && node.children) {
-      result.push(...flattenTreePaths(node.children, fullPath));
-    }
-  }
-  return result;
-}
 
-function InlineDiffViewer({ oldStr, newStr }: { oldStr: string; newStr: string }) {
-  const oldLines = (oldStr || '').split('\n');
-  const newLines = (newStr || '').split('\n');
-  
-  return (
-    <div className="font-mono text-[10px] overflow-x-auto">
-      {oldLines.map((line, i) => (
-        <div key={`old-${i}`} className="flex">
-          <span className="w-4 text-center text-[#c74e39] flex-shrink-0">-</span>
-          <span className="text-[#c74e39] bg-[#c74e39]/10 flex-1 whitespace-pre-wrap break-all px-1">{line}</span>
-        </div>
-      ))}
-      {newLines.map((line, i) => (
-        <div key={`new-${i}`} className="flex">
-          <span className="w-4 text-center text-[#4ec9b0] flex-shrink-0">+</span>
-          <span className="text-[#4ec9b0] bg-[#4ec9b0]/10 flex-1 whitespace-pre-wrap break-all px-1">{line}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
 
-// ─────────────────────────────────────────────────────────
-// Chat activity divider (Bookmark icon + horizontal rule)
-// ─────────────────────────────────────────────────────────
-function ActivityDivider() {
-  return (
-    <div className="flex items-center gap-1.5 my-2">
-      <Bookmark className="size-2.5 text-[#555] shrink-0" />
-      <div className="flex-1 border-t border-dashed border-[#333]" />
-    </div>
-  );
-}
-
-function ToolCallStep({ step }: { step: AgentStep }) {
-  const [expanded, setExpanded] = useState(false);
-  const [editStatus, setEditStatus] = useState<'applied' | 'rejected' | null>(null);
-  const isFinished = !!step.toolOutput;
-  const isEditFile = step.toolName === 'edit_file';
-  const isWriteFile = step.toolName === 'write_file';
-  const { approvalMode, clearPendingDiff } = useWorkspaceStore();
-
-  useEffect(() => {
-    if (isFinished && (isEditFile || isWriteFile) && !step.isError && approvalMode === 'auto') {
-      const path = String(step.toolArgs?.path || '');
-      if (path) {
-        const timer = setTimeout(() => {
-          useWorkspaceStore.getState().markFileTag(path, null);
-          useWorkspaceStore.getState().clearPendingDiff(path);
-        }, 4000);
-        return () => clearTimeout(timer);
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFinished, isEditFile, isWriteFile, step.isError, approvalMode]);
-
-  const handleAccept = () => {
-    setEditStatus('applied');
-    const path = String(step.toolArgs?.path || '');
-    if (path) { clearPendingDiff(path); useWorkspaceStore.getState().markFileTag(path, null); }
-  };
-
-  const handleReject = async () => {
-    if (!step.toolArgs?.path || !step.toolArgs?.old_string || !step.toolArgs?.new_string) return;
-    try {
-      const readRes = await fetch(`/api/workspace/file?path=${encodeURIComponent(String(step.toolArgs.path))}`);
-      if (!readRes.ok) throw new Error('Failed');
-      const { content } = await readRes.json();
-      const reverted = content.replace(String(step.toolArgs.new_string), String(step.toolArgs.old_string));
-      await fetch('/api/workspace/file', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: String(step.toolArgs.path), content: reverted }) });
-      setEditStatus('rejected');
-      clearPendingDiff(String(step.toolArgs.path));
-      useWorkspaceStore.getState().updateFileContent(String(step.toolArgs.path), reverted);
-      useWorkspaceStore.getState().markFileTag(String(step.toolArgs.path), null);
-      toast.info('Reverted');
-    } catch { toast.error('Failed to revert'); }
-  };
-
-  const filePath = String(step.toolArgs?.path || step.toolArgs?.file || '');
-  const fileName = filePath.split(/[/\\]/).pop() || filePath;
-  const command = String(step.toolArgs?.command || '');
-  const isRunning = !isFinished;
-
-  // ─── EDIT / WRITE FILE ──────────────────────────────────
-  if (isEditFile || isWriteFile) {
-    const actionIcon = isEditFile ? <Pencil className="size-3 text-[#4ec9b0] shrink-0" /> : <FilePlus className="size-3 text-[#4ec9b0] shrink-0" />;
-    const actionLabel = isEditFile ? 'AI wants to edit this file' : 'AI wants to create this file';
-    const oldLines = String(step.toolArgs?.old_string || '').split('\n').length;
-    const newLines = String(step.toolArgs?.new_string || step.toolArgs?.content || '').split('\n').length;
-
-    return (
-      <div className="text-[10px] font-mono">
-        {/* Header: icon + bold label */}
-        <div className="flex items-center gap-1.5 py-0.5">
-          {isRunning ? <Loader2 className="size-3 animate-spin text-[#007acc] shrink-0" /> : editStatus === 'rejected' ? <RotateCcw className="size-3 text-[#e2c08d] shrink-0" /> : step.isError ? <XCircle className="size-3 text-[#c74e39] shrink-0" /> : editStatus === 'applied' ? <CheckCircle2 className="size-3 text-[#4ec9b0] shrink-0" /> : actionIcon}
-          <span className={`font-semibold ${isRunning ? 'vibeforge-wave-text' : 'text-[#cccccc]'}`}>{actionLabel}:</span>
-          {editStatus && <span className={`ml-1 text-[9px] ${editStatus === 'rejected' ? 'text-[#e2c08d]' : 'text-[#4ec9b0]'}`}>{editStatus}</span>}
-        </div>
-
-        {/* Accordion: filename → expand for path + code */}
-        <details className="ml-5" onToggle={(e) => setExpanded((e.target as HTMLDetailsElement).open)}>
-          <summary className="cursor-pointer flex items-center gap-1.5 text-[9px] text-[#888] hover:text-[#cccccc] transition-colors py-0.5 list-none">
-            <ChevronRight className={`size-2.5 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} />
-            <FileCode className="size-3 text-[#519aba] shrink-0" />
-            <span className="text-[#cccccc]">{fileName}</span>
-            {isEditFile && !isRunning && (
-              <span className="text-[#555] ml-1">{oldLines} → {newLines} lines</span>
-            )}
-          </summary>
-          <div className="pl-4 pt-1 flex flex-col gap-1">
-            <div className="text-[#555] truncate py-0.5 text-[9px]">{filePath}</div>
-            {/* Show code diff preview */}
-            {isFinished && (isEditFile ? !!step.toolArgs?.old_string : !!step.toolArgs?.content) && (
-              <div className="border border-[#333] rounded overflow-hidden text-[9px]">
-                {isEditFile ? (
-                  <>
-                    {String(step.toolArgs?.old_string || '').split('\n').slice(0, 6).map((line, i) => (
-                      <div key={`old-${i}`} className="flex bg-[#c74e39]/8 px-2 py-px">
-                        <span className="w-3 text-[#c74e39]/60 shrink-0">-</span>
-                        <span className="text-[#c74e39]/80 whitespace-pre truncate">{line}</span>
-                      </div>
-                    ))}
-                    {String(step.toolArgs?.new_string || '').split('\n').slice(0, 6).map((line, i) => (
-                      <div key={`new-${i}`} className="flex bg-[#4ec9b0]/8 px-2 py-px">
-                        <span className="w-3 text-[#4ec9b0]/60 shrink-0">+</span>
-                        <span className="text-[#4ec9b0]/80 whitespace-pre truncate">{line}</span>
-                      </div>
-                    ))}
-                  </>
-                ) : (
-                  String(step.toolArgs?.content || '').split('\n').slice(0, 8).map((line, i) => (
-                    <div key={i} className="flex bg-[#4ec9b0]/8 px-2 py-px">
-                      <span className="w-3 text-[#4ec9b0]/60 shrink-0">+</span>
-                      <span className="text-[#4ec9b0]/80 whitespace-pre truncate">{line}</span>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-        </details>
-
-        {/* Approve / Reject for manual mode */}
-        {isFinished && !step.isError && !editStatus && approvalMode !== 'auto' && (
-          <div className="flex items-center gap-2 ml-5 mt-1">
-            <button onClick={handleAccept} className="text-[9px] px-2 py-0.5 rounded bg-[#4ec9b0]/15 text-[#4ec9b0] hover:bg-[#4ec9b0]/25 border border-[#4ec9b0]/30 flex items-center gap-1 transition-colors">
-              <CheckCircle2 className="size-2.5" />Approve
-            </button>
-            <button onClick={handleReject} className="text-[9px] px-2 py-0.5 rounded bg-[#c74e39]/15 text-[#c74e39] hover:bg-[#c74e39]/25 border border-[#c74e39]/30 flex items-center gap-1 transition-colors">
-              <XCircle className="size-2.5" />Reject
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // ─── READ FILE ─────────────────────────────────────────
-  if (step.toolName === 'read_file') {
-    const lineCount = step.toolOutput ? step.toolOutput.split('\n').length : 0;
-    return (
-      <div className="text-[9px] font-mono">
-        <div className="flex items-center gap-1.5 py-0.5">
-          {isRunning ? <Loader2 className="size-2.5 animate-spin text-[#007acc] shrink-0" /> : <FileCode className="size-2.5 text-[#519aba] shrink-0" />}
-          <span className={`truncate max-w-[200px] ${isRunning ? 'vibeforge-wave-text' : 'text-[#d4d4d4]'}`}>{filePath}</span>
-          {isFinished && lineCount > 0 && (
-            <span className="text-[#888] ml-1 shrink-0">lines 1–{lineCount}</span>
-          )}
-          {isFinished && step.toolOutput && (
-            <button onClick={() => setExpanded(!expanded)} className="ml-auto text-[#888] hover:text-[#cccccc]">
-              <ChevronRight className={`size-2.5 transition-transform ${expanded ? 'rotate-90' : ''}`} />
-            </button>
-          )}
-        </div>
-        {expanded && step.toolOutput && (
-          <div className="ml-4 text-[9px] text-[#aaa] bg-[#1a1a1a] border border-[#333] rounded p-1.5 mt-0.5 max-h-24 overflow-y-auto whitespace-pre-wrap">
-            {step.toolOutput.slice(0, 600)}{step.toolOutput.length > 600 ? '\n…' : ''}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // ─── LIST DIRECTORY ────────────────────────────────────
-  if (step.toolName === 'list_directory') {
-    const lines = step.toolOutput ? step.toolOutput.trim().split('\n') : [];
-    const preview = lines.slice(0, 5);
-    return (
-      <div className="text-[9px] font-mono">
-        <div className="flex items-center gap-1.5 py-0.5">
-          {isRunning ? <Loader2 className="size-2.5 animate-spin text-[#007acc] shrink-0" /> : <FolderOpen className="size-2.5 text-[#dcb67a] shrink-0" />}
-          <span className={`truncate max-w-[200px] ${isRunning ? 'vibeforge-wave-text' : 'text-[#d4d4d4]'}`}>{filePath}</span>
-          {isFinished && preview.length > 0 && (
-            <button onClick={() => setExpanded(!expanded)} className="ml-auto text-[#888] hover:text-[#cccccc]">
-              <ChevronRight className={`size-2.5 transition-transform ${expanded ? 'rotate-90' : ''}`} />
-            </button>
-          )}
-        </div>
-        {expanded && (
-          <div className="ml-4 flex flex-col gap-0.5 py-0.5">
-            {preview.map((line, i) => {
-              const isDir = line.includes('[DIR]');
-              const clean = line.replace(/^\[(DIR|FILE)\]\s*/, '').trim();
-              return (
-                <div key={i} className="flex items-center gap-1 text-[#aaa]">
-                  {isDir ? <Folder className="size-2 text-[#dcb67a] shrink-0" /> : <FileCode className="size-2 text-[#519aba] shrink-0" />}
-                  <span>{clean}</span>
-                </div>
-              );
-            })}
-            {lines.length > 5 && <span className="text-[#888]">+{lines.length - 5} more…</span>}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // ─── RUN COMMAND ───────────────────────────────────────
-  if (step.toolName === 'run_command') {
-    const statusColor = step.isError ? '#c74e39' : isFinished ? '#4ec9b0' : '#e2c08d';
-    const statusLabel = step.isError ? 'failed' : isFinished ? 'completed' : 'running';
-    return (
-      <div className="text-[9px] font-mono">
-        {/* Header */}
-        <div className="flex items-center gap-1.5 py-0.5">
-          {isRunning ? <Loader2 className="size-2.5 animate-spin text-[#007acc] shrink-0" /> : <Terminal className="size-2.5 text-[#888] shrink-0" />}
-          <span className={`font-semibold ${isRunning ? 'vibeforge-wave-text' : 'text-[#cccccc]'}`}>AI wants to execute this command</span>
-        </div>
-
-        {/* Command container */}
-        <div className="ml-3 mt-1 border border-[#3a3a3a] rounded overflow-hidden">
-          {/* Container header: status dot + label + command */}
-          <div className="flex items-center gap-2 px-2.5 py-1.5 bg-[#252526] border-b border-[#333]">
-            <span className="size-2 rounded-full shrink-0" style={{ backgroundColor: statusColor }} />
-            <span className="text-[9px] capitalize" style={{ color: statusColor }}>{statusLabel}</span>
-            <span className="text-[#4ec9b0] font-mono truncate flex-1 text-[9px]">$ {command}</span>
-          </div>
-
-          {/* Terminal output: fixed height 120px, scrollable */}
-          {(step.toolOutput || isRunning) && (
-            <div className="bg-[#0e0e0e] h-[120px] overflow-y-auto p-2 whitespace-pre-wrap text-[9px] font-mono leading-relaxed" style={{ color: step.isError ? '#f48771' : '#4ec9b0' }}>
-              {step.toolOutput || (isRunning ? <span className="vibeforge-wave-text">Executing...</span> : null)}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // ─── MEMORY ────────────────────────────────────────────
-  if (['memory_read', 'memory_list', 'memory_write'].includes(step.toolName || '')) {
-    const label = step.toolName === 'memory_write' ? 'updated memory' : step.toolName === 'memory_read' ? 'read memory' : 'indexed memory';
-    return (
-      <div className="text-[9px] font-mono flex items-center gap-1.5 py-0.5">
-        {isRunning ? <Loader2 className="size-2.5 animate-spin text-[#007acc] shrink-0" /> : <Brain className="size-2.5 text-[#888] shrink-0" />}
-        <span className={isRunning ? 'vibeforge-wave-text' : 'text-[#aaa]'}>{label}</span>
-        {filePath && <span className="text-[#d4d4d4] truncate max-w-[180px]">{filePath}</span>}
-      </div>
-    );
-  }
-
-  // ─── FALLBACK ──────────────────────────────────────────
-  return (
-    <div className="text-[9px] font-mono flex items-center gap-1.5 py-0.5">
-      {isRunning ? <Loader2 className="size-2.5 animate-spin text-[#007acc] shrink-0" /> : <Cpu className="size-2.5 text-[#888] shrink-0" />}
-      <span className={isRunning ? 'vibeforge-wave-text' : 'text-[#aaa]'}>{step.toolName}</span>
-      {filePath && <span className="text-[#d4d4d4] truncate max-w-[180px]">{filePath}</span>}
-    </div>
-  );
-}
-
-const AiMessageBubble = memo(function AiMessageBubble({ role, content, steps, model, provider, isLast }: { role: string; content: string; steps?: AgentStep[]; model?: string; provider?: string; isLast?: boolean }) {
-  const isUser = role === 'user';
-  const isSystem = role === 'system';
-
-  if (isUser) {
-    return (
-      <div className="flex justify-end">
-        <div className="max-w-[85%] rounded-lg px-3 py-2 text-xs leading-relaxed bg-[#264f78] text-[#d4e4f7] min-w-0">
-          <div className="flex items-center gap-1.5 mb-1">
-            <Cpu className="size-3 text-[#9cdcfe]" />
-            <span className="font-semibold text-[10px] uppercase tracking-wide text-[#9cdcfe]">You</span>
-          </div>
-          <p className="whitespace-pre-wrap break-words overflow-hidden">{content}</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (isSystem) {
-    return (
-      <div className="flex justify-center">
-        <div className="rounded-md px-3 py-1.5 text-[10px] bg-[#1e1e1e] text-[#888] border border-[#333] italic flex items-center gap-1.5">
-          <AlertCircle className="size-3" />
-          {content}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex justify-start">
-      <div className="max-w-[90%] min-w-0 rounded-lg text-xs leading-relaxed bg-[#2d2d2d] text-[#cccccc] border border-[#3a3a3a] overflow-hidden">
-        <div className="flex items-center gap-1.5 px-3 pt-2 pb-1 border-b border-[#3a3a3a]">
-          <Bot className="size-3.5 text-[#4ec9b0]" />
-          <span className="font-semibold text-[10px] uppercase tracking-wide text-[#4ec9b0]">VibeForge AI</span>
-          {(provider || model) && (
-            <span className="ml-auto text-[9px] px-1.5 py-0.5 bg-[#1e1e1e] text-[#888] rounded font-mono flex items-center gap-1">
-              {provider && <span className="text-[#4ec9b0]/80">{provider}</span>}
-              {provider && model && <span className="text-[#444]">·</span>}
-              {model && <span>{model}</span>}
-            </span>
-          )}
-        </div>
-
-        {steps && steps.length > 0 && (() => {
-          const allFinished = steps.every(s => s.type === 'thought' || !!s.toolOutput);
-          const toolSteps = steps.filter(s => s.type === 'tool_call');
-          const isStreamingDone = allFinished && content && toolSteps.length > 0;
-
-          if (isStreamingDone) {
-            return null;
-          }
-
-          return (
-            <div className="flex flex-col mx-3 mt-2 gap-0">
-              {steps.map((step, idx) => {
-                if (step.type === 'thought') {
-                  const isActive = !step.toolOutput && idx === steps.length - 1;
-                  return (
-                    <div key={idx} className="text-[10px] py-1 px-1">
-                      <span className={isActive ? 'vibeforge-wave-text' : 'text-[#999] italic'}>
-                        {step.text ? step.text.slice(0, 150) + (step.text.length > 150 ? '...' : '') : (isActive ? 'Thinking...' : '')}
-                      </span>
-                    </div>
-                  );
-                }
-                if (step.type === 'tool_call') {
-                  return (
-                    <div key={idx}>
-                      <ActivityDivider />
-                      <ToolCallStep step={step} />
-                    </div>
-                  );
-                }
-                return null;
-              })}
-            </div>
-          );
-        })()}
-
-        {content && (
-          <div className="px-3 py-2 prose prose-invert prose-ide max-w-none text-[#d4d4d4] [&_code]:text-[#ce9178] [&_pre]:bg-[#1e1e1e] [&_pre]:border [&_pre]:border-[#3a3a3a] [&_h1]:text-[#4ec9b0] [&_h2]:text-[#4ec9b0] [&_h3]:text-[#4ec9b0] [&_blockquote]:border-[#3a3a3a] [&_strong]:text-[#e0e0e0] [&_a]:text-[#4fc1ff] [&_p]:text-[#d4d4d4] [&_li]:text-[#d4d4d4] overflow-hidden break-words">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-          </div>
-        )}
-
-        {/* Show output — collapsed AFTER the content text, only when done */}
-        {steps && steps.length > 0 && (() => {
-          const allFinished = steps.every(s => s.type === 'thought' || !!s.toolOutput);
-          const toolSteps = steps.filter(s => s.type === 'tool_call');
-          const readSteps = toolSteps.filter(s => s.toolName === 'read_file');
-          const searchSteps = toolSteps.filter(s => s.toolName === 'list_directory');
-
-          if (!(allFinished && content && toolSteps.length > 0)) return null;
-
-          return (
-            <details className="mx-3 mt-1 mb-2 group">
-              <summary className="flex items-center gap-1.5 text-[9px] text-[#888] cursor-pointer hover:text-[#cccccc] transition-colors select-none list-none">
-                <ChevronRight className="size-2.5 shrink-0 group-open:rotate-90 transition-transform" />
-                <span>Show output</span>
-                <span className="text-[#777]">
-                  {readSteps.length > 0 && `${readSteps.length} file${readSteps.length > 1 ? 's' : ''}`}
-                  {readSteps.length > 0 && searchSteps.length > 0 && ' · '}
-                  {searchSteps.length > 0 && `${searchSteps.length} folder${searchSteps.length > 1 ? 's' : ''}`}
-                  {(readSteps.length === 0 && searchSteps.length === 0) && `${toolSteps.length} step${toolSteps.length > 1 ? 's' : ''}`}
-                </span>
-              </summary>
-              <div className="flex flex-col gap-0 mt-1 pl-1">
-                {steps.map((step, idx) => {
-                  if (step.type === 'thought') return <div key={idx} className="text-[9px] text-[#888] italic py-0.5 truncate">{step.text?.slice(0, 80)}</div>;
-                  if (step.type === 'tool_call') return (
-                    <div key={idx}>
-                      <ActivityDivider />
-                      <ToolCallStep step={step} />
-                    </div>
-                  );
-                  return null;
-                })}
-              </div>
-            </details>
-          );
-        })()}
-
-        {/* Thinking indicator — shown inside bubble when running with no content yet */}
-        {isLast && !content && (!steps || steps.length === 0) && (
-          <div className="px-3 py-3 flex items-center gap-2">
-            <Loader2 className="size-3.5 animate-spin text-[#4ec9b0] shrink-0" />
-            <span className="text-[10px] vibeforge-wave-text font-medium">Thinking...</span>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-});
-
-function ActiveTodoStrip() {
-  const { activeTodoList, dismissTodoList } = useWorkspaceStore();
-  const [collapsed, setCollapsed] = useState(true);
-
-  if (!activeTodoList || activeTodoList.dismissedByUser || activeTodoList.status === 'dismissed') {
-    return null;
-  }
-
-  const items = activeTodoList.items || [];
-  const completedCount = items.filter(i => i.status === 'done' || i.status === 'skipped').length;
-  const totalCount = items.length;
-  const runningItem = items.find(i => i.status === 'running');
-
-  return (
-    <div className="bg-[#2d2d2d] border-t border-[#3a3a3a] px-2.5 py-1.5 flex flex-col gap-1 text-xs flex-shrink-0">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 min-w-0">
-          <ListTodo className="size-3 text-[#4ec9b0] flex-shrink-0" />
-          <span className="font-semibold text-[#cccccc] text-[10px] uppercase tracking-wide flex-shrink-0">Working Plan</span>
-          <span className="text-[#888] font-mono text-[10px] flex-shrink-0">{completedCount}/{totalCount}</span>
-          {runningItem && (
-            <span className="text-[#4ec9b0] font-mono text-[10px] truncate animate-pulse">
-              ▶ {runningItem.title}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-1 flex-shrink-0">
-          <button
-            onClick={() => setCollapsed(!collapsed)}
-            className="text-[9px] text-[#888] hover:text-[#cccccc] px-1 py-0.5 rounded hover:bg-[#383838] transition-colors"
-          >
-            {collapsed ? 'Expand' : 'Collapse'}
-          </button>
-          <button
-            onClick={() => dismissTodoList()}
-            className="text-[9px] text-[#888] hover:text-[#cccccc] px-1 py-0.5 rounded hover:bg-[#383838] transition-colors"
-          >
-            <X className="size-3" />
-          </button>
-        </div>
-      </div>
-      {!collapsed && (
-        <div className="flex flex-col gap-0.5 pl-1 py-1 max-h-28 overflow-y-auto border-t border-[#383838] mt-1">
-          {items.map((item) => (
-            <div key={item.id} className="flex items-center gap-2 text-[11px] py-0.5">
-              {item.status === 'done' ? (
-                <CheckCircle2 className="size-3 text-[#4ec9b0] shrink-0" />
-              ) : item.status === 'running' ? (
-                <Loader2 className="size-3 animate-spin text-[#007acc] shrink-0" />
-              ) : item.status === 'failed' ? (
-                <XCircle className="size-3 text-[#c74e39] shrink-0" />
-              ) : item.status === 'skipped' ? (
-                <Circle className="size-3 text-[#555] shrink-0" />
-              ) : (
-                <Circle className="size-3 text-[#888] shrink-0" />
-              )}
-              <span className={`truncate ${item.status === 'done' ? 'line-through text-[#666]' : item.status === 'failed' ? 'text-[#c74e39]' : 'text-[#cccccc]'}`}>
-                {item.title}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function InterruptedTaskBanner({ 
-  lastMessage, 
-  onResume, 
-  onDismiss 
-}: { 
-  lastMessage: string, 
-  onResume: () => void, 
-  onDismiss: () => void 
-}) {
-  return (
-    <div className="bg-[#c74e39]/10 border-t border-[#c74e39]/20 px-3 py-2 flex flex-col gap-1.5 text-xs flex-shrink-0 relative">
-      <div className="flex items-center gap-2">
-        <AlertTriangle className="size-3.5 text-[#c74e39] flex-shrink-0" />
-        <span className="font-semibold text-[#cccccc]">Task Interrupted</span>
-        <button onClick={onDismiss} className="ml-auto text-[#888] hover:text-[#cccccc]">
-          <X className="size-3" />
-        </button>
-      </div>
-      <p className="text-[#888] leading-relaxed">
-        The agent connection was interrupted. The last prompt was:
-        <br />
-        <span className="text-[#cccccc] italic line-clamp-1 mt-1">&quot;{lastMessage}&quot;</span>
-      </p>
-      <div className="mt-1 flex gap-2">
-        <button onClick={onResume} className="bg-[#c74e39] text-white px-2 py-1 rounded text-[10px] hover:bg-[#a63a28] transition-colors">
-          Resume Task
-        </button>
-        <button onClick={onDismiss} className="bg-[#333] text-[#cccccc] px-2 py-1 rounded text-[10px] hover:bg-[#444] transition-colors">
-          Dismiss
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ContextUsageBar({ usedTokens, contextLimit }: { usedTokens: number; contextLimit: number }) {
-  if (contextLimit <= 0) return null;
-
-  const pct = Math.min(100, Math.round((usedTokens / contextLimit) * 100));
-  const usedK = (usedTokens / 1000).toFixed(1);
-  const limitK = (contextLimit / 1000).toFixed(0);
-
-  let barColor = 'bg-[#4ec9b0]';
-  let label = '';
-  if (pct >= 90) { barColor = 'bg-[#c74e39]'; label = 'Near limit'; }
-  else if (pct >= 70) { barColor = 'bg-[#e2c08d]'; label = 'Getting full'; }
-
-  return (
-    <div className="flex items-center gap-2 text-[9px] text-[#888] mt-1">
-      <div className="flex-1 h-1 bg-[#333] rounded-full overflow-hidden">
-        <div className={`h-full ${barColor} transition-all`} style={{ width: `${pct}%` }} />
-      </div>
-      <span className="font-mono flex-shrink-0">
-        {usedTokens >= 0 ? `~${usedK}k / ${limitK}k` : 'Token usage unavailable'}
-      </span>
-      {label && <span className="text-[8px] text-[#e2c08d] flex-shrink-0">{label}</span>}
-    </div>
-  );
-}
 
 const COMMAND_ITEMS = [
   { id: 'new', label: '/new', description: 'Start a new chat session' },
@@ -1791,40 +559,11 @@ export default function WorkspacePage() {
     return () => window.removeEventListener('keydown', handler);
   }, [handleSave]);
 
-  const handleResumeTask = async () => {
-    const msgs = useWorkspaceStore.getState().aiMessages;
-    if (msgs.length < 2) return;
-    const lastMsg = msgs[msgs.length - 1];
-    const secondLast = msgs[msgs.length - 2];
-    
-    let messagesToRun = [...msgs];
-    let skill = '';
-    
-    // If the last message is an empty assistant response (interrupted stream)
-    if (lastMsg.role === 'assistant' && !lastMsg.content && secondLast.role === 'user') {
-      // We remove the empty assistant message, we will replace it during run
-      messagesToRun = msgs.slice(0, -1);
-      const lcMsg = secondLast.content.toLowerCase().trim();
-      if (lcMsg === 'umb' || lcMsg === 'update memory' || lcMsg === 'sync memory' || lcMsg === 'update memory bank') {
-        skill = 'update-memory-bank';
-      }
-      const skillMatch = secondLast.content.match(/@([\w-]+)/);
-      if (skillMatch) skill = skillMatch[1];
-    } else {
-      toast.error('Nothing to resume');
-      return;
-    }
-    
-    // Update store state
-    useWorkspaceStore.setState({ aiMessages: messagesToRun });
-    setShowInterruptedBanner(false);
-    
-    // Begin streaming loop again
+  const runAiStream = async (messagesToRun: { role: string; content: string; model?: string; provider?: string; steps?: AgentStep[] }[], skill: string = '') => {
     setAgentRunning(true, 'Thinking...');
     globalAiAbortControllerRef.current = new AbortController();
     abortControllerRef.current = globalAiAbortControllerRef.current;
-    
-    // Ensure we have a fresh assistant message slot
+
     addAiMessage({ role: 'assistant', content: '', model: effectiveModelId, provider: effectiveProviderName });
 
     try {
@@ -1842,7 +581,7 @@ export default function WorkspacePage() {
         signal: globalAiAbortControllerRef.current.signal,
       });
 
-      if (!response.ok) throw new Error('Failed to resume chat streaming');
+      if (!response.ok) throw new Error('Failed to start chat streaming');
       if (!response.body) throw new Error('No response body from chat API');
 
       const reader = response.body.getReader();
@@ -1869,7 +608,7 @@ export default function WorkspacePage() {
 
             const eventType = eventLine.replace(/^event:\s*/, '').trim();
             const dataStr = dataLine.replace(/^data:\s*/, '').trim();
-            
+
             if (eventType === 'done') {
               done = true;
               break;
@@ -1957,7 +696,6 @@ export default function WorkspacePage() {
         updateLastAiMessage('An error occurred while communicating with the AI.');
       }
     } finally {
-      // Estimate context from messages if provider didn't return usage
       const msgs = useWorkspaceStore.getState().aiMessages;
       const totalChars = msgs.reduce((sum, m) => sum + (m.content?.length || 0) + (m.steps?.reduce((s, st) => s + (st.text?.length || 0) + (st.toolOutput?.length || 0), 0) || 0), 0);
       const estTokens = Math.round(totalChars / 4);
@@ -1968,6 +706,33 @@ export default function WorkspacePage() {
       globalAiAbortControllerRef.current = null;
       abortControllerRef.current = null;
     }
+  };
+
+  const handleResumeTask = async () => {
+    const msgs = useWorkspaceStore.getState().aiMessages;
+    if (msgs.length < 2) return;
+    const lastMsg = msgs[msgs.length - 1];
+    const secondLast = msgs[msgs.length - 2];
+
+    let messagesToRun = [...msgs];
+    let skill = '';
+
+    if (lastMsg.role === 'assistant' && !lastMsg.content && secondLast.role === 'user') {
+      messagesToRun = msgs.slice(0, -1);
+      const lcMsg = secondLast.content.toLowerCase().trim();
+      if (lcMsg === 'umb' || lcMsg === 'update memory' || lcMsg === 'sync memory' || lcMsg === 'update memory bank') {
+        skill = 'update-memory-bank';
+      }
+      const skillMatch = secondLast.content.match(/@([\w-]+)/);
+      if (skillMatch) skill = skillMatch[1];
+    } else {
+      toast.error('Nothing to resume');
+      return;
+    }
+
+    useWorkspaceStore.setState({ aiMessages: messagesToRun });
+    setShowInterruptedBanner(false);
+    await runAiStream(messagesToRun, skill);
   };
 
   const handleSendAiMessage = async () => {
@@ -2012,6 +777,12 @@ export default function WorkspacePage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ command: `mkdir -p .vibeforge/memory-bank`, cwd: projectPath })
+        });
+
+        await fetch('/api/workspace/terminal/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command: `echo ".vibeforge" >> .gitignore`, cwd: projectPath })
         });
 
         // 1. Detect Stack via package.json
@@ -2113,7 +884,7 @@ export default function WorkspacePage() {
     if (skillMatch) {
       skill = skillMatch[1];
     }
-    
+
     // Check if user is asking to update memory
     const lcMsg = userMsg.toLowerCase().trim();
     if (lcMsg === 'umb' || lcMsg === 'update memory' || lcMsg === 'sync memory' || lcMsg === 'update memory bank') {
@@ -2121,166 +892,13 @@ export default function WorkspacePage() {
     }
 
     addAiMessage({ role: 'user', content: userMsg });
-    addAiMessage({ role: 'assistant', content: '', model: effectiveModelId, provider: effectiveProviderName });
-    
+
     if (!activeChatSessionId) {
       setTimeout(() => saveChatSession(), 0);
     }
-    
-    setAgentRunning(true, 'Thinking...');
-    globalAiAbortControllerRef.current = new AbortController();
-    abortControllerRef.current = globalAiAbortControllerRef.current;
+
     setShowInterruptedBanner(false);
-    
-    try {
-      const response = await fetch('/api/ai/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [...aiMessages, { role: 'user', content: userMsg }],
-          providerId: effectiveProviderId,
-          model: effectiveModelId,
-          skill,
-          projectPath,
-          projectId: activeProjectId,
-        }),
-        signal: globalAiAbortControllerRef.current.signal,
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to start chat streaming');
-      }
-
-      if (!response.body) {
-        throw new Error('No response body from chat API');
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let done = false;
-      let accumulated = '';
-      const currentSteps: AgentStep[] = [];
-      let fullContent = '';
-
-      while (!done) {
-        const { value, done: doneReading } = await reader.read();
-        done = doneReading;
-        if (value) {
-          const chunk = decoder.decode(value, { stream: !done });
-          accumulated += chunk;
-          
-          const parts = accumulated.split('\n\n');
-          accumulated = parts.pop() || '';
-
-          for (const part of parts) {
-            if (!part.trim()) continue;
-            const lines = part.split('\n').map(l => l.trim()).filter(Boolean);
-            const eventLine = lines.find(l => l.startsWith('event:'));
-            const dataLine = lines.find(l => l.startsWith('data:'));
-            if (!eventLine || !dataLine) continue;
-
-            const eventType = eventLine.replace(/^event:\s*/, '').trim();
-            const dataStr = dataLine.replace(/^data:\s*/, '').trim();
-            
-            if (eventType === 'done') {
-              done = true;
-              break;
-            }
-
-            try {
-              const data = JSON.parse(dataStr);
-              if (eventType === 'thought') {
-                currentSteps.push({ type: 'thought', text: data.text });
-                setAgentStatusText(`Thinking: ${(data.text || '').slice(0, 60)}...`);
-              } else if (eventType === 'tool_call') {
-                currentSteps.push({ type: 'tool_call', toolId: data.id, toolName: data.name, toolArgs: data.args });
-                const argHint = data.args?.path || data.args?.command || '';
-                setAgentStatusText(`Running: ${data.name}${argHint ? ' ' + argHint : ''}`.slice(0, 80));
-                if ((data.name === 'edit_file' || data.name === 'write_file') && data.args?.path) {
-                  const _fp = String(data.args.path);
-                  const _fn = _fp.split(/[/\\]/).pop() || 'file';
-                  if (data.name === 'write_file') {
-                    useWorkspaceStore.getState().openFile(_fp, _fn, '');
-                  } else {
-                    await handleFileClick(_fp, _fn);
-                  }
-                  useWorkspaceStore.getState().markFileTag(_fp, data.name === 'write_file' ? 'created' : 'edited');
-                  startLiveDiffAnimation(_fp, data.name, data.args, cancelDiffAnimationRef);
-                }
-              } else if (eventType === 'tool_result') {
-                const targetStep = currentSteps.find(s => s.type === 'tool_call' && s.toolId === data.id);
-                if (targetStep) {
-                  targetStep.toolOutput = data.output;
-                  targetStep.isError = data.isError;
-                  if (!data.isError && targetStep.toolArgs?.path) {
-                    const toolName = targetStep.toolName || '';
-                    if (toolName === 'edit_file' || toolName === 'write_file') {
-                      if (cancelDiffAnimationRef.current) { cancelDiffAnimationRef.current(); cancelDiffAnimationRef.current = null; }
-                      const fp = String(targetStep.toolArgs.path);
-                      const fn = fp.split(/[/\\]/).pop() || 'file';
-                      try {
-                        const res = await fetch(`/api/workspace/file?path=${encodeURIComponent(fp)}`);
-                        if (res.ok) {
-                          const fileData = await res.json();
-                          const newContent = fileData.content || '';
-                          const store = useWorkspaceStore.getState();
-                          const existing = store.openFiles.find(f => f.path === fp);
-                          if (existing) {
-                            store.updateFileContent(fp, newContent);
-                            store.markFileSaved(fp);
-                          } else {
-                            store.openFile(fp, fn, newContent);
-                          }
-                          store.clearPendingDiff(fp);
-                          store.markFileTag(fp, toolName === 'write_file' ? 'created' : 'edited');
-                          store.setActiveFile(fp);
-                        }
-                      } catch {}
-                      if (toolName === 'write_file') refetchTree();
-                    }
-                  }
-                }
-              } else if (eventType === 'content_stream') {
-                const hasToolCalls = currentSteps.some(s => s.type === 'tool_call');
-                if (!hasToolCalls) {
-                  const delta = (data.delta || '').replace(/<tool_use>[\s\S]*?<\/tool_use>/g, '').replace(/<[^>]*$/g, '');
-                  if (delta.trim()) fullContent += delta;
-                }
-              } else if (eventType === 'content') {
-                if (data.replace) {
-                  fullContent = data.delta || '';
-                } else {
-                  fullContent += data.delta || '';
-                }
-              } else if (eventType === 'usage') {
-                if (data.total) setContextUsage(data.total, contextLimit);
-              }
-            } catch (e) {
-              console.error('Failed to parse SSE JSON', e, dataStr);
-            }
-          }
-          updateLastAiMessageSteps([...currentSteps], fullContent);
-        }
-      }
-    } catch (err: any) {
-      if (err.name === 'AbortError') {
-        toast.info('Generation stopped');
-      } else {
-        toast.error(err.message || 'Error occurred during streaming');
-        updateLastAiMessage('An error occurred while communicating with the AI.');
-      }
-    } finally {
-      // Estimate context from messages if provider didn't return usage
-      const msgs = useWorkspaceStore.getState().aiMessages;
-      const totalChars = msgs.reduce((sum, m) => sum + (m.content?.length || 0) + (m.steps?.reduce((s, st) => s + (st.text?.length || 0) + (st.toolOutput?.length || 0), 0) || 0), 0);
-      const estTokens = Math.round(totalChars / 4);
-      if (estTokens > useWorkspaceStore.getState().contextUsedTokens) {
-        setContextUsage(estTokens, contextLimit);
-      }
-      setAgentRunning(false);
-      globalAiAbortControllerRef.current = null;
-      abortControllerRef.current = null;
-    }
+    await runAiStream([...aiMessages, { role: 'user', content: userMsg }], skill);
   };
 
   const renderSidebarContent = () => {

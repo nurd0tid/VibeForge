@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRecord, updateRecord, deleteRecord } from '@/lib/nocodb';
+import { toNocoDBFields, SCHEDULE_FIELD_MAP } from '@/lib/nocodb-fields';
 import type { Schedule } from '@/types';
 
 const TABLE = 'schedules';
@@ -25,7 +26,8 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const record = await updateRecord<Schedule>(TABLE, Number(id), body);
+    const mappedBody = toNocoDBFields(body, SCHEDULE_FIELD_MAP);
+    const record = await updateRecord<Schedule>(TABLE, Number(id), mappedBody);
     return NextResponse.json(record);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';

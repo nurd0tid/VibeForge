@@ -51,7 +51,7 @@ export interface TaskPlan extends BaseRecord {
   dependencies?: string;
   assumptions?: string;
   estimated_effort?: string;
-  created_by_agent?: boolean;
+  created_by_agent?: string;
 }
 
 export interface Schedule extends BaseRecord {
@@ -102,7 +102,7 @@ export interface ProjectContextUpdate extends BaseRecord {
   affected_files?: string;
   decision?: string;
   reason?: string;
-  created_by_agent?: boolean;
+  created_by_agent?: string;
 }
 
 export interface AgentRun extends BaseRecord {
@@ -115,6 +115,8 @@ export interface AgentRun extends BaseRecord {
   status: string;
   input_summary?: string;
   output_summary?: string;
+  input_tokens?: number;
+  output_tokens?: number;
   started_at?: string;
   finished_at?: string;
   error_message?: string;
@@ -220,6 +222,8 @@ export interface Provider extends BaseRecord {
   is_active?: boolean;
   supports_reasoning?: boolean;
   supports_tools?: boolean;
+  context_window?: number;
+  max_output_tokens?: number;
   config?: ProviderConfig | string;
 }
 

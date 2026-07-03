@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { listRecords, createRecord } from '@/lib/nocodb';
-import { EMPTY_LIST_RESPONSE, isNotFoundError } from '@/lib/api-helpers';
+import { EMPTY_LIST_RESPONSE, isNotFoundError, apiError } from '@/lib/api-helpers';
 import { toNocoDBFields, PROJECT_FIELD_MAP } from '@/lib/nocodb-fields';
 import type { Project } from '@/types';
 
@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(EMPTY_LIST_RESPONSE<Project>());
     }
     const message = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return apiError(message);
   }
 }
 
@@ -30,6 +30,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(record, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return apiError(message);
   }
 }

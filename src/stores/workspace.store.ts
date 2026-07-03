@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { AgentTodoList, TodoStatus } from '@/types';
+import { saveSessionsToIDB, deleteSessionFromIDB } from '@/lib/session-storage';
 
 interface OpenFile {
   path: string;
@@ -239,13 +240,13 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         const title = firstUser ? firstUser.content.slice(0, 60) : `Session ${new Date().toLocaleTimeString()}`;
 
         if (activeChatSessionId) {
-          set({
-            chatSessions: chatSessions.map((s) =>
-              s.id === activeChatSessionId
-                ? { ...s, messages: [...aiMessages], title }
-                : s
-            ),
-          });
+          const newSessions = chatSessions.map((s) =>
+            s.id === activeChatSessionId
+              ? { ...s, messages: [...aiMessages], title }
+              : s
+          );
+          set({ chatSessions: newSessions });
+          saveSessionsToIDB(newSessions);
         } else {
           const newSession: ChatSession = {
             id: crypto.randomUUID(),
@@ -253,10 +254,12 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             messages: [...aiMessages],
             createdAt: new Date().toISOString(),
           };
+          const newSessions = [newSession, ...chatSessions];
           set((state) => ({
-            chatSessions: [newSession, ...state.chatSessions],
+            chatSessions: newSessions,
             activeChatSessionId: newSession.id,
           }));
+          saveSessionsToIDB(newSessions);
         }
       },
 
@@ -276,6 +279,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       deleteChatSession: (id) => {
         set((state) => {
           const filtered = state.chatSessions.filter((s) => s.id !== id);
+          deleteSessionFromIDB(id, state.chatSessions);
           const wasActive = state.activeChatSessionId === id;
           return {
             chatSessions: filtered,
@@ -375,7 +379,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     {
       name: 'vibeforge-workspace',
       partialize: (state) => ({
-        chatSessions: state.chatSessions,
         activeChatSessionId: state.activeChatSessionId,
         aiMessages: state.aiMessages,
         approvalMode: state.approvalMode,

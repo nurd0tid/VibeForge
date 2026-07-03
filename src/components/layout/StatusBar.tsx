@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useUiStore } from '@/stores/ui.store';
+import { useHasHydrated } from '@/hooks/useHasHydrated';
 import { useProject } from '@/features/projects/hooks';
 import { Badge } from '@/components/ui/badge';
 import { GitBranch, Database, Cpu } from 'lucide-react';
@@ -12,6 +13,7 @@ function getField(obj: Record<string, unknown>, snake: string, title: string): s
 }
 
 export function StatusBar() {
+  const hasHydrated = useHasHydrated();
   const { activeProjectId } = useUiStore();
   const { data: project } = useProject(activeProjectId);
 
@@ -36,6 +38,8 @@ export function StatusBar() {
   const providerLabel = activeProvider
     ? `${providerName || 'Provider'} - ${providerModel || 'unknown'}`
     : 'No AI Provider';
+
+  if (!hasHydrated) return null;
 
   return (
     <div className="flex items-center justify-between px-4 py-1 text-xs border-t bg-muted/40 text-muted-foreground select-none">

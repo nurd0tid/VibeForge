@@ -12,6 +12,7 @@ import {
   useDeleteProject,
 } from '@/features/projects/hooks';
 import { useUiStore } from '@/stores/ui.store';
+import { useHasHydrated } from '@/hooks/useHasHydrated';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -288,6 +289,7 @@ function ProjectDetailSheet({
 }
 
 export default function ProjectsPage() {
+  const hasHydrated = useHasHydrated();
   const router = useRouter();
   const { data, isLoading, error, refetch } = useProjects();
   const { activeProjectId, setActiveProjectId } = useUiStore();
@@ -549,6 +551,8 @@ export default function ProjectsPage() {
     setActiveProjectId(String(project.Id));
     router.push('/workspace');
   };
+
+  if (!hasHydrated) return null;
 
   return (
     <div className="flex flex-1 flex-col p-8 max-w-7xl mx-auto w-full">

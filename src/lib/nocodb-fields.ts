@@ -59,3 +59,54 @@ export const TASK_FIELD_MAP: Record<string, string> = {
   dependencies: 'Dependencies',
   blocked_reason: 'Blocked Reason',
 };
+
+export const TASK_PLAN_FIELD_MAP: Record<string, string> = {
+  project_id: 'Project ID',
+  title: 'Title',
+  description: 'Description',
+  status: 'Status',
+  priority: 'Priority',
+  target_date: 'Target Date',
+  tasks: 'Tasks',
+  notes: 'Notes',
+};
+
+export const SCHEDULE_FIELD_MAP: Record<string, string> = {
+  project_id: 'Project ID',
+  name: 'Name',
+  description: 'Description',
+  cron_expression: 'Cron Expression',
+  is_active: 'Is Active',
+  last_run: 'Last Run',
+  next_run: 'Next Run',
+};
+
+export const DAILY_LOG_FIELD_MAP: Record<string, string> = {
+  project_id: 'Project ID',
+  date: 'Date',
+  summary: 'Summary',
+  tasks_completed: 'Tasks Completed',
+  blockers: 'Blockers',
+  notes: 'Notes',
+};
+
+export const WEEKLY_LOG_FIELD_MAP: Record<string, string> = {
+  project_id: 'Project ID',
+  week_start: 'Week Start',
+  week_end: 'Week End',
+  summary: 'Summary',
+  goals_met: 'Goals Met',
+  challenges: 'Challenges',
+  notes: 'Notes',
+};
+
+export const AGENT_RUN_FIELD_MAP: Record<string, string> = {
+  project_id: 'Project ID',
+  task_id: 'Task ID',
+  agent_name: 'Agent Name',
+  status: 'Status',
+  start_time: 'Start Time',
+  end_time: 'End Time',
+  logs: 'Logs',
+  error: 'Error',
+};

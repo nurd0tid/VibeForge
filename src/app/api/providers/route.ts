@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { listRecords, createRecord } from '@/lib/nocodb';
-import { EMPTY_LIST_RESPONSE, isNotFoundError } from '@/lib/api-helpers';
+import { EMPTY_LIST_RESPONSE, isNotFoundError, apiError } from '@/lib/api-helpers';
 import { setProviderLocalConfig } from '@/lib/local-config';
 import type { Provider } from '@/types';
 
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     if (isNotFoundError(error)) return NextResponse.json(EMPTY_LIST_RESPONSE<Provider>());
     const message = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return apiError(message);
   }
 }
 
@@ -35,12 +35,16 @@ export async function POST(request: NextRequest) {
       'Is Active': rest.is_active ?? true,
       'Supports Reasoning': rest.supports_reasoning ?? false,
       'Supports Tools': rest.supports_tools ?? false,
+      'Context Window': rest.context_window,
+      'Max Output Tokens': rest.max_output_tokens,
       // Fallbacks
       base_url: rest.base_url,
       default_model: rest.default_model,
       is_active: rest.is_active ?? true,
       supports_reasoning: rest.supports_reasoning ?? false,
       supports_tools: rest.supports_tools ?? false,
+      context_window: rest.context_window,
+      max_output_tokens: rest.max_output_tokens,
     };
 
     const record = await createRecord<Provider>(TABLE, nocoData as Partial<Provider>);
@@ -56,6 +60,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(record, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return apiError(message);
   }
 }

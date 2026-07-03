@@ -11,6 +11,7 @@ import {
   isSameDay,
 } from 'date-fns';
 import { useUiStore } from '@/stores/ui.store';
+import { useHasHydrated } from '@/hooks/useHasHydrated';
 import {
   useSchedules,
   useCreateSchedule,
@@ -426,6 +427,7 @@ function ScheduleFormDialog({
 }
 
 export default function SchedulePage() {
+  const hasHydrated = useHasHydrated();
   const { activeProjectId } = useUiStore();
   const { data, isLoading, error, refetch } = useSchedules(activeProjectId);
 
@@ -521,6 +523,8 @@ export default function SchedulePage() {
 
   const handleDetailClose = () => setDetailItem(null);
   const handleDeleted = () => refetch();
+
+  if (!hasHydrated) return null;
 
   if (!activeProjectId) {
     return (

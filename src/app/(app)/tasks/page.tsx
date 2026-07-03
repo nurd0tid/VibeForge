@@ -1,9 +1,25 @@
 ﻿'use client';
 
 import { useState, useMemo } from 'react';
+import { 
+  DndContext, 
+  DragEndEvent, 
+  useSensor, 
+  useSensors, 
+  PointerSensor,
+  useDroppable,
+  closestCorners
+} from '@dnd-kit/core';
+import { 
+  useSortable, 
+  SortableContext, 
+  verticalListSortingStrategy 
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import Link from 'next/link';
 import { useUiStore } from '@/stores/ui.store';
-import { useTasks, useCreateTask } from '@/features/tasks/hooks';
+import { useHasHydrated } from '@/hooks/useHasHydrated';
+import { useTasks, useCreateTask, useUpdateTask } from '@/features/tasks/hooks';
 import { TaskDrawer } from '@/features/tasks/components/TaskDrawer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -99,6 +115,21 @@ const STATUS_OPTIONS: { value: TaskStatus; label: string }[] = [
 ];
 
 function TaskCard({ task, onOpen, selected, onToggleSelect }: { task: Task; onOpen: (id: string) => void; selected: boolean; onToggleSelect: (id: number) => void }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: String(task.Id) });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : undefined,
+  };
+
   const router = useRouter();
   const type = task.type ? TYPE_CONFIG[task.type] : null;
   const priority = task.priority ? PRIORITY_CONFIG[task.priority] : null;
@@ -108,7 +139,6 @@ function TaskCard({ task, onOpen, selected, onToggleSelect }: { task: Task; onOp
   const handlePlayTask = (e: React.MouseEvent) => {
     e.stopPropagation();
     
-    // Create a working plan based on this task
     const mockTodoList: any = {
       id: crypto.randomUUID(),
       taskId: String(task.Id),
@@ -136,6 +166,10 @@ function TaskCard({ task, onOpen, selected, onToggleSelect }: { task: Task; onOp
 
   return (
     <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
       onClick={() => onOpen(String(task.Id))}
       className={`w-full text-left rounded-lg border bg-card px-3 py-3 hover:border-primary/40 hover:shadow-sm transition-all group cursor-pointer relative ${
         selected ? 'border-primary shadow-sm bg-primary/5' : 'border-border'
@@ -197,6 +231,18 @@ function TaskCard({ task, onOpen, selected, onToggleSelect }: { task: Task; onOp
   );
 }
 
+function DroppableColumn({ id, children }: { id: string; children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`flex flex-col gap-2 p-3 overflow-y-auto max-h-[calc(100vh-300px)] transition-colors ${isOver ? 'bg-primary/5 rounded-lg' : ''}`}
+    >
+      {children}
+    </div>
+  );
+}
+
 function KanbanColumnSkeleton() {
   return (
     <div className="flex-shrink-0 w-64 xl:w-72">
@@ -216,9 +262,49 @@ function KanbanColumnSkeleton() {
 }
 
 export default function TasksPage() {
+  const hasHydrated = useHasHydrated();
   const { activeProjectId, openTaskDrawer } = useUiStore();
   const { data, isLoading, error } = useTasks(activeProjectId);
   const createTask = useCreateTask();
+  const updateTask = useUpdateTask();
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    
+    const taskId = Number(active.id);
+    const allTasks: Task[] = data?.list ?? [];
+    
+    let newStatus: TaskStatus | undefined;
+    const isColumn = COLUMNS.some(col => col.id === over.id);
+    if (isColumn) {
+      newStatus = over.id as TaskStatus;
+    } else {
+      const overTaskId = Number(over.id);
+      const overTask = allTasks.find(t => t.Id === overTaskId);
+      if (overTask) {
+        newStatus = overTask.status;
+      }
+    }
+
+    if (!newStatus) return;
+
+    const task = allTasks.find(t => t.Id === taskId);
+    if (task && task.status !== newStatus) {
+      updateTask.mutate({
+        id: taskId,
+        status: newStatus
+      });
+    }
+  };
 
   const [search, setSearch] = useState('');
   const [priorityFilter, setPriorityFilter] = useState<string[]>([]);
@@ -408,6 +494,8 @@ Generate the tasks now:`
     });
   };
 
+  if (!hasHydrated) return null;
+
   if (!activeProjectId) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
@@ -579,57 +667,62 @@ Generate the tasks now:`
               ))}
             </>
           ) : (
-            COLUMNS.map((col) => {
-              const tasks = tasksByStatus[col.id] || [];
-              const { accent, dot } = COLUMN_HEADER_CONFIG[col.id];
-              return (
-                <div key={col.id} className="flex-shrink-0 w-64 xl:w-72 flex flex-col max-h-full">
-                  <div className={`rounded-xl border-t-2 border border-border bg-muted/30 flex flex-col ${accent}`}>
-                    <div className="px-3 py-3 border-b border-border flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className={`size-2 rounded-full ${dot}`} />
-                        <span className="text-sm font-semibold">{col.label}</span>
-                        <span className="text-xs text-muted-foreground bg-muted rounded-full px-1.5 py-0.5 font-medium">
-                          {tasks.length}
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => openTaskDrawer()}
-                        className="size-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                        title={`Add task to ${col.label}`}
-                      >
-                        <Plus className="size-3.5" />
-                      </button>
-                    </div>
-
-                    <div className="flex flex-col gap-2 p-3 overflow-y-auto max-h-[calc(100vh-300px)]">
-                      {tasks.length === 0 ? (
-                        <div className="py-6 text-center text-xs text-muted-foreground/60 select-none">
-                          No tasks
+            <DndContext onDragEnd={handleDragEnd} sensors={sensors} collisionDetection={closestCorners}>
+              {COLUMNS.map((col) => {
+                const tasks = tasksByStatus[col.id] || [];
+                const taskIds = tasks.map((t) => String(t.Id));
+                const { accent, dot } = COLUMN_HEADER_CONFIG[col.id];
+                return (
+                  <div key={col.id} className="flex-shrink-0 w-64 xl:w-72 flex flex-col max-h-full">
+                    <div className={`rounded-xl border-t-2 border border-border bg-muted/30 flex flex-col ${accent}`}>
+                      <div className="px-3 py-3 border-b border-border flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className={`size-2 rounded-full ${dot}`} />
+                          <span className="text-sm font-semibold">{col.label}</span>
+                          <span className="text-xs text-muted-foreground bg-muted rounded-full px-1.5 py-0.5 font-medium">
+                            {tasks.length}
+                          </span>
                         </div>
-                      ) : (
-                        tasks.map((task) => (
-                          <TaskCard
-                            key={task.Id}
-                            task={task}
-                            onOpen={openTaskDrawer}
-                            selected={selectedTaskIds.has(task.Id)}
-                            onToggleSelect={(id) => {
-                              setSelectedTaskIds((prev) => {
-                                const next = new Set(prev);
-                                if (next.has(id)) next.delete(id);
-                                else next.add(id);
-                                return next;
-                              });
-                            }}
-                          />
-                        ))
-                      )}
+                        <button
+                          onClick={() => openTaskDrawer()}
+                          className="size-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                          title={`Add task to ${col.label}`}
+                        >
+                          <Plus className="size-3.5" />
+                        </button>
+                      </div>
+
+                      <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
+                        <DroppableColumn id={col.id}>
+                          {tasks.length === 0 ? (
+                            <div className="py-6 text-center text-xs text-muted-foreground/60 select-none">
+                              No tasks
+                            </div>
+                          ) : (
+                            tasks.map((task) => (
+                              <TaskCard
+                                key={task.Id}
+                                task={task}
+                                onOpen={openTaskDrawer}
+                                selected={selectedTaskIds.has(task.Id)}
+                                onToggleSelect={(id) => {
+                                  setSelectedTaskIds((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(id)) next.delete(id);
+                                    else next.add(id);
+                                    return next;
+                                  });
+                                }}
+                              />
+                            ))
+                          )}
+                        </DroppableColumn>
+                      </SortableContext>
                     </div>
                   </div>
-                </div>
-              );
-            })
+                );
+              })}
+            </DndContext>
           )}
         </div>
       </div>

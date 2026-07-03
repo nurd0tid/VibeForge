@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { listRecords, createRecord } from '@/lib/nocodb';
 import { EMPTY_LIST_RESPONSE, isNotFoundError } from '@/lib/api-helpers';
+import { toNocoDBFields, TASK_PLAN_FIELD_MAP } from '@/lib/nocodb-fields';
 import type { TaskPlan } from '@/types';
 
 const TABLE = 'task_plans';
@@ -24,7 +25,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const record = await createRecord<TaskPlan>(TABLE, body);
+    const mappedBody = toNocoDBFields(body, TASK_PLAN_FIELD_MAP);
+    const record = await createRecord<TaskPlan>(TABLE, mappedBody);
     return NextResponse.json(record, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { listRecords, createRecord } from '@/lib/nocodb';
-import { EMPTY_LIST_RESPONSE, isNotFoundError } from '@/lib/api-helpers';
+import { EMPTY_LIST_RESPONSE, isNotFoundError, apiError } from '@/lib/api-helpers';
+import { toNocoDBFields, WEEKLY_LOG_FIELD_MAP } from '@/lib/nocodb-fields';
 import type { WeeklyLog } from '@/types';
 
 const TABLE = 'weekly_logs';
@@ -17,17 +18,18 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     if (isNotFoundError(error)) return NextResponse.json(EMPTY_LIST_RESPONSE<WeeklyLog>());
     const message = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return apiError(message);
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const record = await createRecord<WeeklyLog>(TABLE, body);
+    const mappedBody = toNocoDBFields(body, WEEKLY_LOG_FIELD_MAP);
+    const record = await createRecord<WeeklyLog>(TABLE, mappedBody);
     return NextResponse.json(record, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return apiError(message);
   }
 }

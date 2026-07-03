@@ -1,4 +1,13 @@
+import { NextResponse } from 'next/server';
 import type { NocoDBListResponse } from '@/types';
+
+export function apiSuccess<T>(data: T, status = 200) {
+  return NextResponse.json({ ok: true, data }, { status });
+}
+
+export function apiError(message: string, status = 500) {
+  return NextResponse.json({ ok: false, error: message }, { status });
+}
 
 export const EMPTY_LIST_RESPONSE = <T>(): NocoDBListResponse<T> => ({
   list: [],

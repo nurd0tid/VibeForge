@@ -39,12 +39,16 @@ export async function PATCH(
       'Is Active': rest.is_active ?? true,
       'Supports Reasoning': rest.supports_reasoning ?? false,
       'Supports Tools': rest.supports_tools ?? false,
+      'Context Window': rest.context_window,
+      'Max Output Tokens': rest.max_output_tokens,
       // Fallbacks
       base_url: rest.base_url,
       default_model: rest.default_model,
       is_active: rest.is_active ?? true,
       supports_reasoning: rest.supports_reasoning ?? false,
       supports_tools: rest.supports_tools ?? false,
+      context_window: rest.context_window,
+      max_output_tokens: rest.max_output_tokens,
     };
     
     const record = await updateRecord<Provider>(TABLE, Number(id), nocoData);

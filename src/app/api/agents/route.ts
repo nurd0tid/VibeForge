@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { listRecords, createRecord } from '@/lib/nocodb';
 import { EMPTY_LIST_RESPONSE, isNotFoundError } from '@/lib/api-helpers';
+import { toNocoDBFields, AGENT_RUN_FIELD_MAP } from '@/lib/nocodb-fields';
 import type { AgentRun } from '@/types';
 
 export async function GET(request: Request) {
@@ -29,7 +30,8 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const result = await createRecord<AgentRun>('agent_runs', body);
+    const mappedBody = toNocoDBFields(body, AGENT_RUN_FIELD_MAP);
+    const result = await createRecord<AgentRun>('agent_runs', mappedBody);
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';

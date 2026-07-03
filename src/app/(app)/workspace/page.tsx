@@ -1,6 +1,7 @@
 'use client';
 
 import { memo, useState, useEffect, useCallback, useRef } from 'react';
+import { useHasHydrated } from '@/hooks/useHasHydrated';
 import dynamic from 'next/dynamic';
 import { useQuery } from '@tanstack/react-query';
 import { useUiStore } from '@/stores/ui.store';
@@ -15,13 +16,14 @@ import {
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-// Global abort controller to survive component unmounts
-let globalAiAbortController: AbortController | null = null;
-let cancelDiffAnimation: (() => void) | null = null;
-
 // Animates the Monaco DiffEditor — streams content line-by-line into the diff view.
-function startLiveDiffAnimation(path: string, toolName: string, args: Record<string, unknown>) {
-  if (cancelDiffAnimation) { cancelDiffAnimation(); cancelDiffAnimation = null; }
+function startLiveDiffAnimation(
+  path: string,
+  toolName: string,
+  args: Record<string, unknown>,
+  cancelRef: React.MutableRefObject<(() => void) | null>
+) {
+  if (cancelRef.current) { cancelRef.current(); cancelRef.current = null; }
   const store = useWorkspaceStore.getState();
   let cancelled = false;
 
@@ -46,11 +48,11 @@ function startLiveDiffAnimation(path: string, toolName: string, args: Record<str
         setTimeout(tick, Math.max(20, Math.min(80, 800 / lines.length)));
       } else {
         store.setPendingDiff(path, currentContent, finalModified);
-        cancelDiffAnimation = null;
+        cancelRef.current = null;
       }
     };
     setTimeout(tick, 50);
-    cancelDiffAnimation = () => { cancelled = true; store.setPendingDiff(path, currentContent, finalModified); };
+    cancelRef.current = () => { cancelled = true; store.setPendingDiff(path, currentContent, finalModified); };
   } else if (toolName === 'write_file') {
     const content = String(args.content || '');
     const lines = content.split('\n');
@@ -64,16 +66,17 @@ function startLiveDiffAnimation(path: string, toolName: string, args: Record<str
       if (lineIdx < lines.length) {
         setTimeout(tick, Math.max(15, Math.min(60, 600 / lines.length)));
       } else {
-        cancelDiffAnimation = null;
+        cancelRef.current = null;
       }
     };
     setTimeout(tick, 50);
-    cancelDiffAnimation = () => { cancelled = true; store.setPendingDiff(path, '', content); };
+    cancelRef.current = () => { cancelled = true; store.setPendingDiff(path, '', content); };
   }
 }
 import { toast } from 'sonner';
 import type { Provider, NocoDBListResponse } from '@/types';
-import type { AgentStep } from '@/stores/workspace.store';
+import type { AgentStep, ChatSession } from '@/stores/workspace.store';
+import { loadSessionsFromIDB } from '@/lib/session-storage';
 import Link from 'next/link';
 import {
   Command,
@@ -1416,52 +1419,40 @@ const COMMAND_ITEMS = [
 ];
 
 export default function WorkspacePage() {
+  const hasHydrated = useHasHydrated();
   const { activeProjectId } = useUiStore();
   const { data: project } = useProject(activeProjectId);
   const projectPath = project?.local_path || (project as unknown as Record<string, string>)?.['Local Path'] || '';
   const projectDefaultBranch = project?.default_branch || (project as unknown as Record<string, string>)?.['Default Branch'] || 'main';
+  const openFiles = useWorkspaceStore(s => s.openFiles);
+  const activeFilePath = useWorkspaceStore(s => s.activeFilePath);
+  const pendingDiffs = useWorkspaceStore(s => s.pendingDiffs);
+
+  // Panel state
+  const activePanel = useWorkspaceStore(s => s.activePanel);
+  const bottomTab = useWorkspaceStore(s => s.bottomTab);
+  const isAiPanelOpen = useWorkspaceStore(s => s.isAiPanelOpen);
+
+  // AI state
+  const aiMessages = useWorkspaceStore(s => s.aiMessages);
+  const chatSessions = useWorkspaceStore(s => s.chatSessions);
+  const activeChatSessionId = useWorkspaceStore(s => s.activeChatSessionId);
+  const isAgentRunning = useWorkspaceStore(s => s.isAgentRunning);
+  const agentStatusText = useWorkspaceStore(s => s.agentStatusText);
+  const approvalMode = useWorkspaceStore(s => s.approvalMode);
+  const contextUsedTokens = useWorkspaceStore(s => s.contextUsedTokens);
+  const contextLimit = useWorkspaceStore(s => s.contextLimit);
+  const isAutoCompactEnabled = useWorkspaceStore(s => s.isAutoCompactEnabled);
+
+  // Actions (actions from Zustand never change, so read them once with getState)
   const {
-    openFiles,
-    activeFilePath,
-    activePanel,
-    bottomTab,
-    aiMessages,
-    chatSessions,
-    activeChatSessionId,
-    isAgentRunning,
-    agentStatusText,
-    approvalMode,
-    contextUsedTokens,
-    contextLimit,
-    isAutoCompactEnabled,
-    openFile,
-    closeFile,
-    closeAllFiles,
-    closeOtherFiles,
-    setActiveFile,
-    updateFileContent,
-    markFileSaved,
-    markFileDeleted,
-    setActivePanel,
-    setBottomTab,
-    addAiMessage,
-    updateLastAiMessage,
-    updateLastAiMessageSteps,
-    clearAiMessages,
-    triggerCollapseAll,
-    loadChatSession,
-    deleteChatSession,
-    newChatSession,
-    saveChatSession,
-    setAgentRunning,
-    setAgentStatusText,
-    setApprovalMode,
-    setContextUsage,
-    setAutoCompactEnabled,
-    pendingDiffs,
-    isAiPanelOpen,
-    setAiPanelOpen,
-  } = useWorkspaceStore();
+    openFile, closeFile, closeAllFiles, closeOtherFiles, setActiveFile,
+    updateFileContent, markFileSaved, markFileDeleted, setActivePanel, setBottomTab,
+    addAiMessage, updateLastAiMessage, updateLastAiMessageSteps, clearAiMessages,
+    triggerCollapseAll, loadChatSession, deleteChatSession, newChatSession, saveChatSession,
+    setAgentRunning, setAgentStatusText, setApprovalMode, setContextUsage,
+    setAutoCompactEnabled, setAiPanelOpen
+  } = useWorkspaceStore.getState();
 
   const [aiInput, setAiInput] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -1478,6 +1469,8 @@ export default function WorkspacePage() {
   const aiScrollContainerRef = useRef<HTMLDivElement>(null);
   const aiTextareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const globalAiAbortControllerRef = useRef<AbortController | null>(null);
+  const cancelDiffAnimationRef = useRef<(() => void) | null>(null);
   const editorInstRef = useRef<any>(null);
   const diffEditorInstRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
@@ -1488,6 +1481,22 @@ export default function WorkspacePage() {
   const [clipboardPath, setClipboardPath] = useState<string | null>(null);
 
   const activeFile = openFiles.find((f) => f.path === activeFilePath);
+
+  const [panelSizes, setPanelSizes] = useState<number[]>([70, 30]);
+  useEffect(() => {
+    const saved = localStorage.getItem('workspace-panel-sizes');
+    if (saved) {
+      try { setPanelSizes(JSON.parse(saved)); } catch (e) {}
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSessionsFromIDB().then((sessions) => {
+      if (sessions && sessions.length > 0) {
+        useWorkspaceStore.setState({ chatSessions: sessions as ChatSession[] });
+      }
+    });
+  }, []);
 
   // Auto-scroll Monaco when streaming diff changes
   useEffect(() => {
@@ -1745,7 +1754,8 @@ export default function WorkspacePage() {
       } catch {
       }
     },
-    [openFiles, setActiveFile, openFile]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [openFiles]
   );
 
   const handleSave = useCallback(async () => {
@@ -1767,7 +1777,8 @@ export default function WorkspacePage() {
     } finally {
       setIsSaving(false);
     }
-  }, [activeFile, markFileSaved]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeFile]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -1810,8 +1821,8 @@ export default function WorkspacePage() {
     
     // Begin streaming loop again
     setAgentRunning(true, 'Thinking...');
-    globalAiAbortController = new AbortController();
-    abortControllerRef.current = globalAiAbortController;
+    globalAiAbortControllerRef.current = new AbortController();
+    abortControllerRef.current = globalAiAbortControllerRef.current;
     
     // Ensure we have a fresh assistant message slot
     addAiMessage({ role: 'assistant', content: '', model: effectiveModelId, provider: effectiveProviderName });
@@ -1828,7 +1839,7 @@ export default function WorkspacePage() {
           projectPath,
           projectId: activeProjectId,
         }),
-        signal: globalAiAbortController.signal,
+        signal: globalAiAbortControllerRef.current.signal,
       });
 
       if (!response.ok) throw new Error('Failed to resume chat streaming');
@@ -1881,7 +1892,7 @@ export default function WorkspacePage() {
                     await handleFileClick(_fp, _fn);
                   }
                   useWorkspaceStore.getState().markFileTag(_fp, data.name === 'write_file' ? 'created' : 'edited');
-                  startLiveDiffAnimation(_fp, data.name, data.args);
+                  startLiveDiffAnimation(_fp, data.name, data.args, cancelDiffAnimationRef);
                 }
               } else if (eventType === 'tool_result') {
                 const targetStep = currentSteps.find(s => s.type === 'tool_call' && s.toolId === data.id);
@@ -1891,7 +1902,7 @@ export default function WorkspacePage() {
                   if (!data.isError && targetStep.toolArgs?.path) {
                     const toolName = targetStep.toolName || '';
                     if (toolName === 'edit_file' || toolName === 'write_file') {
-                      if (cancelDiffAnimation) { cancelDiffAnimation(); cancelDiffAnimation = null; }
+                      if (cancelDiffAnimationRef.current) { cancelDiffAnimationRef.current(); cancelDiffAnimationRef.current = null; }
                       const fp = String(targetStep.toolArgs.path);
                       const fn = fp.split(/[/\\]/).pop() || 'file';
                       try {
@@ -1949,12 +1960,12 @@ export default function WorkspacePage() {
       // Estimate context from messages if provider didn't return usage
       const msgs = useWorkspaceStore.getState().aiMessages;
       const totalChars = msgs.reduce((sum, m) => sum + (m.content?.length || 0) + (m.steps?.reduce((s, st) => s + (st.text?.length || 0) + (st.toolOutput?.length || 0), 0) || 0), 0);
-      const estTokens = Math.round(totalChars / 3.5);
+      const estTokens = Math.round(totalChars / 4);
       if (estTokens > useWorkspaceStore.getState().contextUsedTokens) {
         setContextUsage(estTokens, contextLimit);
       }
       setAgentRunning(false);
-      globalAiAbortController = null;
+      globalAiAbortControllerRef.current = null;
       abortControllerRef.current = null;
     }
   };
@@ -2117,8 +2128,8 @@ export default function WorkspacePage() {
     }
     
     setAgentRunning(true, 'Thinking...');
-    globalAiAbortController = new AbortController();
-    abortControllerRef.current = globalAiAbortController;
+    globalAiAbortControllerRef.current = new AbortController();
+    abortControllerRef.current = globalAiAbortControllerRef.current;
     setShowInterruptedBanner(false);
     
     try {
@@ -2133,7 +2144,7 @@ export default function WorkspacePage() {
           projectPath,
           projectId: activeProjectId,
         }),
-        signal: globalAiAbortController.signal,
+        signal: globalAiAbortControllerRef.current.signal,
       });
 
       if (!response.ok) {
@@ -2194,7 +2205,7 @@ export default function WorkspacePage() {
                     await handleFileClick(_fp, _fn);
                   }
                   useWorkspaceStore.getState().markFileTag(_fp, data.name === 'write_file' ? 'created' : 'edited');
-                  startLiveDiffAnimation(_fp, data.name, data.args);
+                  startLiveDiffAnimation(_fp, data.name, data.args, cancelDiffAnimationRef);
                 }
               } else if (eventType === 'tool_result') {
                 const targetStep = currentSteps.find(s => s.type === 'tool_call' && s.toolId === data.id);
@@ -2204,7 +2215,7 @@ export default function WorkspacePage() {
                   if (!data.isError && targetStep.toolArgs?.path) {
                     const toolName = targetStep.toolName || '';
                     if (toolName === 'edit_file' || toolName === 'write_file') {
-                      if (cancelDiffAnimation) { cancelDiffAnimation(); cancelDiffAnimation = null; }
+                      if (cancelDiffAnimationRef.current) { cancelDiffAnimationRef.current(); cancelDiffAnimationRef.current = null; }
                       const fp = String(targetStep.toolArgs.path);
                       const fn = fp.split(/[/\\]/).pop() || 'file';
                       try {
@@ -2262,12 +2273,12 @@ export default function WorkspacePage() {
       // Estimate context from messages if provider didn't return usage
       const msgs = useWorkspaceStore.getState().aiMessages;
       const totalChars = msgs.reduce((sum, m) => sum + (m.content?.length || 0) + (m.steps?.reduce((s, st) => s + (st.text?.length || 0) + (st.toolOutput?.length || 0), 0) || 0), 0);
-      const estTokens = Math.round(totalChars / 3.5);
+      const estTokens = Math.round(totalChars / 4);
       if (estTokens > useWorkspaceStore.getState().contextUsedTokens) {
         setContextUsage(estTokens, contextLimit);
       }
       setAgentRunning(false);
-      globalAiAbortController = null;
+      globalAiAbortControllerRef.current = null;
       abortControllerRef.current = null;
     }
   };
@@ -2394,6 +2405,8 @@ export default function WorkspacePage() {
 
   // We do not return early anymore, so the IDE shell is always visible.
 
+  if (!hasHydrated) return null;
+
   return (
     <div className="flex flex-col h-full w-full overflow-hidden bg-[#1e1e1e] text-[#cccccc]">
       
@@ -2441,10 +2454,21 @@ export default function WorkspacePage() {
         {/* 3. CENTER COLUMN (Flexible flex-1, resizable vertically) */}
         <div className="flex-1 min-w-0 flex flex-col bg-[#1e1e1e] overflow-hidden relative">
           <div className="absolute inset-0 flex flex-col overflow-hidden">
-            <ResizablePanelGroup id="workspace-vertical-layout-v10" direction="vertical" className="h-full min-h-0">
+            <ResizablePanelGroup
+              id="workspace-vertical-layout-v10"
+              direction="vertical"
+              className="h-full min-h-0"
+              onLayoutChanged={(layout: Record<string, number>) => {
+                const sizes = [
+                  layout['editor-panel-v10'] ?? 70,
+                  layout['bottom-panel-v10'] ?? 30,
+                ];
+                localStorage.setItem('workspace-panel-sizes', JSON.stringify(sizes));
+              }}
+            >
               
               {/* EDITOR AREA */}
-              <ResizablePanel id="editor-panel-v10" defaultSize={70} minSize={20}>
+              <ResizablePanel id="editor-panel-v10" defaultSize={panelSizes[0]} minSize={20}>
                 <div className="relative w-full h-full bg-[#1e1e1e]">
                   <div className="absolute inset-0 flex flex-col overflow-hidden">
                 {/* Editor Tabs */}
@@ -2694,7 +2718,7 @@ export default function WorkspacePage() {
               <ResizableHandle className="h-1 bg-[#252526] hover:bg-[#007acc] transition-colors" />
 
               {/* BOTTOM PANEL */}
-              <ResizablePanel id="bottom-panel-v10" defaultSize={30} minSize={10}>
+              <ResizablePanel id="bottom-panel-v10" defaultSize={panelSizes[1]} minSize={10}>
                 <div className="relative w-full h-full bg-[#1e1e1e]">
                   <div className="absolute inset-0 flex flex-col overflow-hidden">
                 <div className="flex items-center px-2 bg-[#252526] border-b border-[#1e1e1e] min-h-[30px] flex-shrink-0 overflow-x-auto min-w-0">
@@ -3216,8 +3240,8 @@ export default function WorkspacePage() {
                    {isAgentRunning ? (
                     <button
                       onClick={() => {
-                        globalAiAbortController?.abort();
-                        globalAiAbortController = null;
+                        globalAiAbortControllerRef.current?.abort();
+                        globalAiAbortControllerRef.current = null;
                         abortControllerRef.current = null;
                         setAgentRunning(false);
                       }}

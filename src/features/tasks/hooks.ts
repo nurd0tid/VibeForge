@@ -16,7 +16,7 @@ export function useTasks(projectId?: string | null) {
 
 export function useTask(id: string | null) {
   return useQuery({
-    queryKey: ['task', id],
+    queryKey: ['tasks', id],
     queryFn: async () => {
       const res = await fetch(`/api/tasks/${id}`);
       if (!res.ok) throw new Error('Failed to fetch task');
@@ -59,7 +59,7 @@ export function useUpdateTask() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['task', String(variables.id)] });
+      queryClient.invalidateQueries({ queryKey: ['tasks', String(variables.id)] });
     },
   });
 }

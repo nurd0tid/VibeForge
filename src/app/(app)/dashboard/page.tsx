@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useUiStore } from '@/stores/ui.store';
+import { useHasHydrated } from '@/hooks/useHasHydrated';
 import { useProject, useProjects } from '@/features/projects/hooks';
 import { useTasks } from '@/features/tasks/hooks';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,6 +13,7 @@ import { EmptyState } from '@/components/common/EmptyState';
 import { formatDistanceToNow } from 'date-fns';
 
 export default function DashboardPage() {
+  const hasHydrated = useHasHydrated();
   const { activeProjectId } = useUiStore();
   
   const { data: projectsData, isLoading: isLoadingProjects, error: projectsError } = useProjects();
@@ -37,6 +39,8 @@ export default function DashboardPage() {
   const recentTasks = tasksData?.list
     ? [...tasksData.list].sort((a, b) => new Date(b.UpdatedAt).getTime() - new Date(a.UpdatedAt).getTime()).slice(0, 5)
     : [];
+
+  if (!hasHydrated) return null;
 
   return (
     <div className="flex flex-1 flex-col p-8 max-w-7xl mx-auto w-full gap-6">

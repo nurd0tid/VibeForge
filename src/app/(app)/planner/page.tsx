@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useUiStore } from '@/stores/ui.store';
+import { useHasHydrated } from '@/hooks/useHasHydrated';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
@@ -11,6 +12,7 @@ import { EmptyState } from '@/components/common/EmptyState';
 import { toast } from 'sonner';
 
 export default function PlannerPage() {
+  const hasHydrated = useHasHydrated();
   const { activeProjectId } = useUiStore();
   const [objective, setObjective] = useState('');
   const [planOutput, setPlanOutput] = useState('');
@@ -86,6 +88,8 @@ export default function PlannerPage() {
   const handleConvertToTasks = () => {
     toast.info('Convert to Tasks will be available after saving the plan.');
   };
+
+  if (!hasHydrated) return null;
 
   if (!activeProjectId) {
     return (

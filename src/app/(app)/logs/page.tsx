@@ -17,6 +17,7 @@ import { EmptyState } from '@/components/common/EmptyState';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { useUiStore } from '@/stores/ui.store';
+import { useHasHydrated } from '@/hooks/useHasHydrated';
 import type { DailyLog, WeeklyLog, NocoDBListResponse } from '@/types';
 
 function useDailyLogs() {
@@ -42,6 +43,7 @@ function useWeeklyLogs() {
 }
 
 export default function LogsPage() {
+  const hasHydrated = useHasHydrated();
   const { activeProjectId } = useUiStore();
   const queryClient = useQueryClient();
   const { data: dailyData, isLoading: dailyLoading, error: dailyError, refetch: refetchDaily } = useDailyLogs();
@@ -159,6 +161,8 @@ export default function LogsPage() {
 
   const dailyLogs = dailyData?.list || [];
   const weeklyLogs = weeklyData?.list || [];
+
+  if (!hasHydrated) return null;
 
   return (
     <div className="flex flex-1 flex-col p-8 max-w-7xl mx-auto w-full gap-6">

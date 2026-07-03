@@ -16,7 +16,7 @@ export function useSchedules(projectId?: string | null) {
 
 export function useSchedule(id: string | null) {
   return useQuery({
-    queryKey: ['schedule', id],
+    queryKey: ['schedules', id],
     queryFn: async () => {
       const res = await fetch(`/api/schedules/${id}`);
       if (!res.ok) throw new Error('Failed to fetch schedule');
@@ -59,7 +59,7 @@ export function useUpdateSchedule() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['schedules'] });
-      queryClient.invalidateQueries({ queryKey: ['schedule', String(variables.id)] });
+      queryClient.invalidateQueries({ queryKey: ['schedules', String(variables.id)] });
     },
   });
 }

@@ -1,12 +1,12 @@
 # Prompt: Start Build
 
-Baca seluruh root instructions dan docs.
+Read all root-level instruction files and documentation before beginning.
 
-Gunakan Context7 untuk package docs.
-Gunakan Sequential Thinking untuk planning.
+Use Context7 for package and library documentation.
+Use Sequential Thinking for planning and task decomposition.
 
-Bangun VibeForge sampai MVP usable.
+Build VibeForge toward a usable MVP.
 
-Jangan berhenti setelah satu task.
-Jangan mark Done jika ada blocker.
-Simpan planning/task/logs/context ke NocoDB.
+Do not stop after completing a single task — continue to the next pending task.
+Do not mark a task as done if any blocker exists.
+Persist all plans, tasks, logs, and context updates to NocoDB.

@@ -1,117 +1,117 @@
 # VibeForge Agent Usage Guide & Feature Summary
 
-> Ditulis oleh: VibeForge AI Agent  
-> Tanggal: 2 Juli 2026  
-> Tujuan: Cara ngeprompt yang efektif, cara kerja tools, dan ringkasan pembaruan terbaru.
+> Written by: VibeForge AI Agent
+> Date: 2 July 2026
+> Purpose: Effective prompting strategies, tool reference, and a summary of recent feature updates.
 
 ---
 
-## Cara Ngeprompt yang Efektif
+## Effective Prompting Strategies
 
-### 1. Gunakan @ untuk Skill
-Ketik `@` di input chat untuk memanggil skill tertentu:
+### 1. Use @ to Invoke Skills
+Type `@` in the chat input to invoke a specific skill:
 ```
-@planning    - Buat rencana task berstruktur
-@create-task - Buat task baru di Kanban
-@daily-log   - Tulis daily log progress
-@review-code - Review perubahan kode
-@update-context - Update project context/memory bank
+@planning       - Generate a structured task plan
+@create-task    - Create a new task on the Kanban board
+@daily-log      - Write a daily progress log
+@review-code    - Review recent code changes
+@update-context - Update the project context / memory bank
 ```
-Contoh:
+Examples:
 ```
-@planning buat plan untuk implementasi auth dengan NextAuth
-@create-task implementasi dark mode untuk semua halaman
-```
-
-### 2. Gunakan # untuk Attach File
-Ketik `#` untuk mencari dan menyebut file tertentu:
-```
-#src/app/page.tsx - sertakan file ini sebagai konteks
+@planning create a plan for implementing auth with NextAuth
+@create-task implement dark mode across all pages
 ```
 
-### 3. Gunakan / untuk Command
+### 2. Use # to Attach Files
+Type `#` to search for and reference a specific file:
 ```
-/new      - Chat baru
-/clear    - Hapus percakapan
-/compact  - Kompres context untuk menghemat token
-/sessions - Lihat semua sesi tersimpan
-/init-memory  - Inisialisasi memory bank untuk project
-/mcp-list - Lihat MCP server terhubung
+#src/app/page.tsx - include this file as context
 ```
 
-### 4. Gunakan UMB untuk Update Memory
-Ketik salah satu dari:
+### 3. Use / for Commands
+```
+/new          - Start a new chat
+/clear        - Clear the current conversation
+/compact      - Compress context to save tokens
+/sessions     - View all saved sessions
+/init-memory  - Initialize the memory bank for the project
+/mcp-list     - View connected MCP servers
+```
+
+### 4. Use UMB to Update Memory
+Type any of the following to trigger a memory bank update:
 - `UMB`
 - `update memory`
 - `sync memory`
 - `update memory bank`
 
-AI akan memperbarui file memory bank: `activeContext.md`, `progress.md`, `decisionLog.md`, dll.
+The AI will update the memory bank files: `activeContext.md`, `progress.md`, `decisionLog.md`, etc.
 
 ---
 
-## Tools yang Tersedia untuk AI Agent
+## Available Agent Tools
 
-| Tool | Fungsi | Contoh |
-|------|--------|--------|
-| `list_directory` | Melihat isi folder | `{"path": "src/"}` |
-| `read_file` | Membaca isi file | `{"path": "src/app/page.tsx"}` |
-| `edit_file` | Mengedit file (search & replace) | `{"path": "file.ts", "old_string": "x", "new_string": "y"}` |
-| `write_file` | **Membuat file baru** dari nol | `{"path": "notes.md", "content": "# Notes\n..."}` |
-| `run_command` | Menjalankan perintah terminal | `{"command": "pnpm build"}` |
-| `memory_list` | Daftar file memory bank | `{}` |
-| `memory_read` | Baca file memory bank | `{"file": "activeContext.md"}` |
-| `memory_write` | Tulis/update file memory bank | `{"file": "progress.md", "content": "..."}` |
+The VibeForge agent loop executes the following tools. All tool calls are streamed as SSE events and rendered as inline diffs in the Chat Workspace.
+
+| Tool | Function | Example |
+|------|----------|---------|
+| `list_directory` | List files and folders in a directory | `{"path": "src/"}` |
+| `read_file` | Read the contents of a file | `{"path": "src/app/page.tsx"}` |
+| `edit_file` | Write or overwrite a file (search & replace) | `{"path": "file.ts", "old_string": "x", "new_string": "y"}` |
+| `run_command` | Execute a shell command and capture output | `{"command": "pnpm build"}` |
+
+> **Note:** `write_file`, `memory_list`, `memory_read`, and `memory_write` are documented in some memory bank files but are not part of the core agent loop. The agent uses `edit_file` to both edit and create files, and uses `run_command` to interact with the file system and shell. Memory bank files are read and written via `read_file` and `edit_file`.
 
 ---
 
-## Fitur Terbaru yang Sudah Diimplementasikan
+## Recently Implemented Features
 
 ### Editor & Workspace
-- **Auto-scroll editor ke lokasi perubahan** — Saat AI mengedit atau membuat file, Monaco Editor otomatis scroll ke baris yang berubah.
-- **Gutter decorations (indikator hijau)** — Bar hijau di sisi kiri nomor baris menandai area yang diubah AI (seperti Git diff indicators di VS Code). Hilang otomatis setelah 6 detik.
-- **File auto-terbuka** — Setiap kali AI berhasil membaca, mengedit, atau membuat file, file itu langsung terbuka di editor.
-- **Git Diff Side-by-Side** — Panel Git Diff di bagian bawah workspace menggunakan Monaco DiffEditor sesungguhnya.
-- **write_file tool** — AI sekarang bisa membuat file baru dari nol (sebelumnya hanya bisa edit file yang sudah ada).
+- **Auto-scroll to change location** — When the AI edits or creates a file, Monaco Editor automatically scrolls to the changed line.
+- **Gutter decorations (green indicators)** — A green bar on the left side of the line numbers marks the area modified by the AI (similar to Git diff indicators in VS Code). Decorations are automatically removed after 6 seconds.
+- **File auto-open** — Whenever the AI successfully reads, edits, or creates a file, that file is immediately opened in the editor.
+- **Git Diff Side-by-Side** — The Git Diff panel at the bottom of the workspace uses a true Monaco DiffEditor.
+- **File creation via `edit_file`** — The agent can create new files from scratch using the `edit_file` tool (previously only existing files could be edited).
 
-### Chat AI Assistant
-- **Setiap pesan AI menyimpan model & provider** — Badge di setiap bubble chat menampilkan model dan provider yang dipakai untuk menghasilkan respon tersebut (misalnya `9Router · claude-sonnet-4.5`). Tidak lagi "ngikut" model yang sedang aktif.
-- **Context usage diperbarui saat ganti model** — Jika user berganti provider/model, bar context otomatis mengestimasi ulang token berdasarkan percakapan (estimasi = karakter / 4) dan memperbarui limit sesuai `context_window` provider baru.
-- **Interrupted Task Resume Banner** — Jika agent berhenti di tengah jalan (misal user pindah tab), saat kembali ke workspace muncul banner merah "Task Interrupted" dengan tombol **Resume Task** yang langsung melanjutkan task dari awal tanpa harus menulis ulang prompt.
-- **Global AbortController** — Stream SSE tidak terikat lifecycle komponen sehingga lebih stabil saat navigasi.
-- **Delete Session** — Setiap session di popup Sessions bisa dihapus dengan tombol X yang muncul saat hover.
-- **isAgentRunning tidak di-persist** — Tidak ada lagi UI stuck di state "sedang running" setelah refresh atau pindah tab.
+### AI Chat Assistant
+- **Per-message model & provider badge** — Each chat bubble displays the model and provider used to generate that specific response (e.g., `9Router · claude-sonnet-4.5`). The badge reflects the model at the time of generation, not the currently active model.
+- **Context usage recalculated on model switch** — When the user switches provider or model, the context bar automatically re-estimates token usage based on the current conversation (estimation = characters / 4) and updates the limit according to the new provider's `context_window`.
+- **Interrupted Task Resume Banner** — If the agent stops mid-task (e.g., the user switches tabs), a red "Task Interrupted" banner appears upon returning to the workspace, with a **Resume Task** button that restarts the task from the beginning without requiring the prompt to be re-entered.
+- **Global AbortController** — The SSE stream is not bound to the component lifecycle, making it more stable during navigation.
+- **Delete Session** — Any session in the Sessions popup can be deleted via an X button that appears on hover.
+- **`isAgentRunning` is not persisted** — The UI will no longer be stuck in a "running" state after a page refresh or tab switch.
 
 ### Provider & Settings
-- **Max Output Tokens = -1** — Sama seperti Cline, jika diisi -1 atau dikosongkan, parameter `max_tokens` tidak dikirim ke API (artinya unlimited/default provider).
-- **Settings Popover di Chat Header** — Toggle Auto Approve dan Auto Compact menggunakan Switch yang rapi di popover icon gear, bukan tombol teks mepet.
-- **Context Usage Bar** — Progress bar di header chat menampilkan estimasi token berdasarkan provider aktif.
+- **Max Output Tokens = -1** — Consistent with Cline behavior: if set to -1 or left empty, the `max_tokens` parameter is not sent to the API, resulting in the provider's default (effectively unlimited).
+- **Settings Popover in Chat Header** — Auto Approve and Auto Compact toggles use a clean Switch component inside a gear icon popover, replacing the previous cramped text buttons.
+- **Context Usage Bar** — A progress bar in the chat header displays the estimated token usage based on the active provider.
 
 ### Memory Bank
-- **`/init-memory`** membuat 10 file di `.vibeforge/memory-bank/`:
+- **`/init-memory`** creates 10 files under `.vibeforge/memory-bank/`:
   - `projectBrief.md`, `productContext.md`, `activeContext.md`
   - `systemPatterns.md`, `decisionLog.md`, `progress.md`
   - `knownIssues.md`, `fixedDoNotBreak.md`, `regressionGuard.md`, `updateLog.md`
-- AI membaca memory bank sebelum mulai bekerja dan memperbarui setelah selesai.
+- The AI reads the memory bank before beginning work and updates it upon completion.
 
 ### Tasks
-- **Play Task** — Klik tombol Play (muncul saat hover card task) untuk mengirim task ke workspace dan memulai AI Todo Strip.
-- **Multi-task batch play** — Pilih beberapa task sekaligus dan klik "Play X Tasks".
-- **AI Task Creator** — Dilengkapi pilihan provider dan model. AI benar-benar memanggil API untuk generate task (tidak lagi mock).
-- **Pending/Done filter tabs** — Tampilkan hanya task yang masih pending atau yang sudah done.
+- **Play Task** — Click the Play button (visible on task card hover) to send a task to the workspace and start the AI Todo Strip.
+- **Multi-task batch play** — Select multiple tasks and click "Play X Tasks" to run them as a batch.
+- **AI Task Creator** — Includes provider and model selection. The AI makes a real API call to generate tasks (no longer mocked).
+- **Pending/Done filter tabs** — Filter the task list to show only pending or completed tasks.
 
 ### Docs
-- **16 kategori** di menu Docs, termasuk: Agent Guide, Skills, Setup, Deployment, Logging.
-- **17 file** di `docs/agent/` untuk panduan agent, memory bank, MCP, structured editing, dan regression guard.
-- **15 skill files** dengan anti-rationalization table, verification checklist, dan failure handling.
+- **16 categories** in the Docs menu, including: Agent Guide, Skills, Setup, Deployment, and Logging.
+- **17 files** under `docs/agent/` covering agent guidance, memory bank, MCP, structured editing, and regression guard.
+- **15 skill files** each including an anti-rationalization table, a verification checklist, and failure handling instructions.
 
 ---
 
-## Tips Penggunaan Terbaik
+## Best Practice Tips
 
-1. **Selalu `/init-memory` dulu** sebelum mulai project baru agar AI punya konteks yang lengkap.
-2. **`UMB` setelah selesai task** agar memory bank diperbarui untuk sesi berikutnya.
-3. **Pakai `/compact`** jika context bar sudah hampir penuh (≥70%) sebelum memulai task besar.
-4. **Set context_window di provider settings** sesuai model yang dipakai agar context bar akurat.
-5. **Pakai model = -1 untuk max output tokens** jika ingin output tidak dibatasi.
-6. **Bisa pindah tab** — jika ada task yang interrupt, banner Resume Task akan muncul saat kembali ke workspace.
+1. **Always run `/init-memory` first** before starting a new project so the AI has complete context.
+2. **Run `UMB` after completing a task** so the memory bank is up to date for the next session.
+3. **Use `/compact`** when the context bar is nearly full (≥70%) before starting a large task.
+4. **Set `context_window` in provider settings** to match the model in use so the context bar is accurate.
+5. **Set max output tokens to -1** if you want unlimited output from the provider.
+6. **You can switch tabs freely** — if a task is interrupted, the Resume Task banner will appear when you return to the workspace.

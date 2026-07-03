@@ -69,16 +69,24 @@ These files must be read by any AI agent before making changes:
 
 | Document | Purpose |
 |----------|---------|
+| `VIBEFORGE_OVERVIEW.md` | General overview of the VibeForge system |
+| `USAGE_GUIDE.md` | Guide on how to use the agent system |
 | `HOW_VIBEFORGE_WORKS.md` | System architecture overview for agents |
 | `DONE_CRITERIA.md` | Strict, agent-facing definition of done |
 | `REGRESSION_GUARD.md` | Rules to prevent regressions |
 | `AGENT_WORKFLOW.md` | Step-by-step agent workflow |
+| `TASK_PLAY_WORKFLOW.md` | Details on the task play workflow execution |
 | `MEMORY_BANK_GUIDE.md` | How to use and update the memory bank |
+| `UPDATE_MEMORY_SKILL.md` | Specific skill for updating project memory |
 | `PROVIDER_CONNECTIONS.md` | Provider connection setup rules |
 | `STRUCTURED_EDITING.md` | How structured file diffs work |
 | `DIFF_VIEWER_RULES.md` | Diff viewer behavior rules |
 | `MCP_SETUP.md` | MCP server setup from within VibeForge |
+| `TOOLING_AND_COMMANDS.md` | Reference for tooling and available commands |
 | `UI_LAYOUT_RULES.md` | IDE layout composition rules |
+| `BRAND_ASSETS.md` | Rules for utilizing brand assets |
+| `NOCODB_PERSISTENCE.md` | Guidelines for NocoDB data persistence |
+| `SKILLS_INDEX.md` | Index of all available agent skills |
 
 ---
 

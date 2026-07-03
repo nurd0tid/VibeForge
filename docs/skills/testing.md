@@ -1,50 +1,43 @@
-# Skill: Testing
+---
+name: testing
+description: Run and write tests to verify functionality, prevent regression, and ensure code reliability.
+---
 
-## Purpose
-Run and write tests to verify functionality, prevent regression, and ensure code reliability.
+# Overview
+Locates existing test files, identifies the correct test runner, writes new test cases for positive paths, edge cases, and error handling, and runs both targeted and full test suites.
 
-## When to Use
+# When to Use
 - After writing a feature or a bug fix
 - Before committing changes
 - Before executing a deployment
 
-## Pre-Conditions (Read Before Acting)
-- [ ] Read AGENTS.md
-- [ ] Read memory bank (`activeContext.md`, `progress.md`)
-- [ ] Check relevant docs (`README.md`, `CLAUDE.md`, `docs/agent/REGRESSION_GUARD.md`)
-- [ ] Identify the test framework used in this project
-- [ ] Inspect existing test files for style and imports
-
-## Steps
+# Process
 1. Locate existing tests for the target module
-2. Identify the appropriate test command (e.g. `pnpm test`, `jest`, `vitest`)
-3. Write test cases covering: positive path, edge cases, error handling
-4. Mock dependencies where necessary, respecting project conventions
-5. Run the test suite for the modified file
-6. Run the full test suite to ensure no regressions
-7. Verify test coverage if required by project guidelines
+2. Identify the appropriate test command (e.g., `pnpm test`, `jest`, `vitest`)
+3. Inspect existing test files for style, imports, and mocking conventions
+4. Write test cases covering: positive path, edge cases, error handling
+5. Mock dependencies where necessary, respecting project conventions
+6. Run the test suite for the modified file
+7. Run the full test suite to ensure no regressions
+8. Update memory bank with test results
 
-## Anti-Rationalization Rules
+# Rationalizations
 | Excuse | Rebuttal |
 |--------|----------|
-| "I'll do X later" | No. Do it now or log it as a blocker. |
 | "The changes are too simple to test" | Simple changes often break unexpected dependencies. Test anyway. |
 | "I'll write tests after deployment" | Never deploy untested code. |
 | "Mocking is too hard" | Use existing mocks as examples. Don't skip tests. |
+| "The test framework isn't set up" | Check README and package.json first. Never assume. |
 
-## Verification (Definition of Done)
+# Red Flags
+- Tests skipped entirely before a deployment or commit
+- Test framework assumed without reading project configuration
+- Mocking pattern used is inconsistent with existing test files
+- Coverage requirements not checked
+
+# Verification
 - [ ] Tests run successfully with no failures
 - [ ] Test coverage meets project standards
 - [ ] Build passes
 - [ ] No undefined/null errors in test execution
 - [ ] Memory bank updated with test results
-
-## Output Format
-Summary of executed tests, pass/fail status, and coverage metrics in chat.
-
-## Files Affected
-- Source files and adjacent `.test.ts` or `.spec.ts` files
-- `.vibeforge/memory-bank/progress.md`
-
-## Failure Handling
-If tests fail, diagnose and fix the issue. Do not bypass or disable tests unless explicitly directed and documented.

@@ -1,48 +1,43 @@
-# Skill: Create Task
+---
+name: create-task
+description: Convert structured plans into actionable, atomic Kanban tasks suitable for tracking progress and execution.
+---
 
-## Purpose
-Convert structured plans into actionable, atomic Kanban tasks suitable for tracking progress and execution.
+# Overview
+Parses an approved plan and creates atomic, well-defined tasks in NocoDB with correct field mappings, clear acceptance criteria, and immediate reflection in the ActiveTodoStrip.
 
-## When to Use
+# When to Use
 - After a plan is approved
 - When breaking down a large epic into manageable tickets
 - User requests to create tasks from a list
 
-## Pre-Conditions (Read Before Acting)
-- [ ] Read AGENTS.md
-- [ ] Read memory bank (`activeContext.md`, `progress.md`)
-- [ ] Check relevant docs (`docs/agent/HOW_VIBEFORGE_WORKS.md`)
-- [ ] Read the current plan output from `NEXT_ACTION.md`
-- [ ] Verify NocoDB schema and connection
-
-## Steps
+# Process
 1. Parse the plan from `NEXT_ACTION.md`
-2. Break down broad phases into specific, atomic tasks
+2. Break down broad phases into specific, atomic tasks (max 4 hours each)
 3. For each task, define: Title, Description, Type (Feature/Bug/Chore), Priority, Status (Todo)
 4. Use `src/lib/nocodb-fields.ts` helpers to ensure correct NocoDB field mapping
 5. Save tasks to NocoDB via the API
-6. Update `ActiveTodoStrip` with the immediate next tasks
+6. Verify each saved task with a follow-up read
+7. Update `ActiveTodoStrip` with the immediate next tasks
+8. Update memory bank with task creation event
 
-## Anti-Rationalization Rules
+# Rationalizations
 | Excuse | Rebuttal |
 |--------|----------|
-| "I'll do X later" | No. Do it now or log it as a blocker. |
-| "One big task is fine" | No, tasks must be small and atomic. Max 4 hours effort. |
+| "One big task is fine" | Tasks must be small and atomic. Max 4 hours effort. |
 | "I'll just remember the details" | Write the context into the task description. |
-| "NocoDB is down, I'll just write markdown" | Troubleshoot connection first. NocoDB is the source of truth. |
+| "NocoDB is down, I'll just write markdown" | Troubleshoot the connection first. NocoDB is the source of truth. |
+| "The field names are obvious" | Always use column Title as the JSON key, not column_name. |
 
-## Verification (Definition of Done)
+# Red Flags
+- Tasks saved with `column_name` keys instead of column Title keys
+- Tasks with no acceptance criteria
+- Tasks larger than a single logical unit of work
+- NocoDB save not verified with a follow-up read
+
+# Verification
 - [ ] Tasks are saved successfully to NocoDB
 - [ ] Titles map correctly to NocoDB column Titles (not column_names)
 - [ ] Every task has clear acceptance criteria
+- [ ] `ActiveTodoStrip` reflects the next immediate tasks
 - [ ] Memory bank updated with task creation event
-
-## Output Format
-List of created tasks with their IDs, visible in the chat. `ActiveTodoStrip` updated.
-
-## Files Affected
-- NocoDB remote records
-- `SESSION.md`
-
-## Failure Handling
-If NocoDB save fails, check field names (must be Titles). If connection fails, log error and save tasks locally to a `.todo.md` fallback file.

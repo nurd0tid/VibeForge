@@ -1,52 +1,44 @@
-# Skill: Bug Fix
+---
+name: bug-fix
+description: Systematically diagnose, isolate, fix, and verify bugs to prevent recurrence and regressions.
+---
 
-## Purpose
-Systematically diagnose, isolate, fix, and verify bugs to prevent recurrence and regressions.
+# Overview
+Identifies the root cause of a reported bug, applies a minimal focused fix, and verifies the resolution without introducing regressions.
 
-## When to Use
+# When to Use
 - User reports a bug, error, or unexpected behavior
 - Tests fail
 - Resolving an issue assigned in NocoDB
 
-## Pre-Conditions (Read Before Acting)
-- [ ] Read AGENTS.md
-- [ ] Read memory bank (`activeContext.md`, `progress.md`)
-- [ ] Check relevant docs (`docs/agent/REGRESSION_GUARD.md`)
-- [ ] Gather error logs or specific steps to reproduce
-- [ ] Search codebase for related files and past fixes
-
-## Steps
+# Process
 1. Reproduce the bug (mentally trace or run dev server if instructed)
 2. Isolate the root cause by reading relevant files
 3. Formulate a hypothesis and verify against the code
 4. Implement the fix using the `edit_file` tool (minimal necessary changes)
 5. Add or update tests if applicable to prevent regression
-6. Verify the fix (run lint, typecheck, or tests)
+6. Verify the fix (run `pnpm run lint`, `pnpm run typecheck`)
 7. Perform a regression check on adjacent features
+8. Update memory bank with bug resolution details
 
-## Anti-Rationalization Rules
+# Rationalizations
 | Excuse | Rebuttal |
 |--------|----------|
-| "I'll do X later" | No. Do it now or log it as a blocker. |
-| "I think this is the cause" | No. Prove it with evidence from logs or code tracing. |
-| "This quick hack will do" | No. Find the root cause, fix it properly. |
-| "I don't need to check related files" | Yes you do. Check for side effects of your change. |
+| "I'll fix the other issues later" | No. Do it now or log it as a blocker. |
+| "I think this is the cause" | Prove it with evidence from logs or code tracing. |
+| "This quick hack will do" | Find the root cause and fix it properly. |
+| "I don't need to check related files" | Check for side effects. Adjacent code may break. |
 
-## Verification (Definition of Done)
+# Red Flags
+- Fix applied without reproducing the bug first
+- Multiple guesses attempted without identifying root cause
+- Build or lint fails after the fix is applied
+- Adjacent features untested after the change
+
+# Verification
 - [ ] Root cause identified and documented in chat
-- [ ] Fix applied via `edit_file`
-- [ ] Build passes (`pnpm build` or `pnpm run typecheck`)
+- [ ] Fix applied via `edit_file` with minimal scope
+- [ ] `pnpm run typecheck` passes
+- [ ] `pnpm run lint` passes
 - [ ] No undefined/null errors introduced
-- [ ] Lint passes (`pnpm run lint`)
 - [ ] Memory bank updated with bug resolution details
-
-## Output Format
-Explanation of root cause, inline diff of fix, and confirmation of verification steps passed.
-
-## Files Affected
-- Source files containing the bug
-- Test files (if applicable)
-- `.vibeforge/memory-bank/progress.md`
-
-## Failure Handling
-If the fix breaks the build or fails tests, revert the change immediately. Re-evaluate the root cause. Do not blindly attempt multiple guesses. Ask user for clarification if stuck.

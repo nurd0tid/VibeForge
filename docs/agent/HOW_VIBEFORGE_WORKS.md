@@ -1,59 +1,130 @@
 # How VibeForge Works
 
 ## Overview
-VibeForge is a comprehensive AI-native IDE environment and project management system. It integrates an AI assistant seamlessly with file editing, task tracking, database persistence (NocoDB), and structured agent activity. The entire system is built around strict guardrails that mandate verification and discourage blind rationalization.
 
-## Agent Gateway
-The gateway orchestrates the agent's interactions with the outside world. It manages the lifecycle of:
-1. **Define**: Establish requirements.
-2. **Plan**: Draft a plan (and write to memory).
-3. **Build**: Execute incremental changes.
-4. **Verify**: Ensure tests, types, and lints pass.
-5. **Review**: Self-evaluate the work against done criteria.
-6. **Ship**: Finalize task.
+VibeForge is an AI-native IDE workspace and project management system. It tightly integrates an AI assistant with structured file editing, persistent task tracking, database-backed state (NocoDB), and a memory bank that serves as the project's long-term brain. Every system component is governed by strict guardrails that mandate verification and prohibit rationalization.
 
-## Chat Assistant & Modes
-The chat interface operates in distinct modes based on task requirements:
-- **Architect**: High-level system design and decision-making. No code generation. Focus on structure.
-- **Code**: Incremental Implementation of features. Follows Chesterton's Fence: Do not remove code unless you understand why it exists.
-- **Ask**: Answering questions based purely on documented evidence or inspected codebase state.
-- **Debug**: Doubt-Driven Development mode. CLAIM -> EXTRACT -> DOUBT -> RECONCILE -> STOP.
+---
 
-## Workspace & File Explorer
-The file explorer progressively discloses context. 
-- **Progressive Disclosure**: Load only what is needed. Don't dump entire directories into context.
-- **Bi-Directional Sync**: When editing the project, simultaneously update the memory bank.
+## System Architecture
 
-## Agent Activity & Task Play
-- **Agent Activity**: Logs all tool invocations and step-by-step actions.
-- **Task Play**: Agents follow predefined skills (workflows with entry conditions, checkpoints, and exit criteria) to execute tasks reliably.
+### Agent Gateway
 
-## Structured Editing & Diff Viewer
-- **Structured File Editing**: Edits are done using the `edit_file` tool to generate inline diffs.
-- **Diff Viewer**: Displays changes precisely. Incremental Implementation in thin vertical slices is required.
+The gateway orchestrates the agent's full task lifecycle. Every non-trivial task passes through these phases in order:
 
-## Todo List & Schedules
-- **Todo List (ActiveTodoStrip)**: Tasks are generated into the UI when running a prompt.
-- **Daily / Weekly Log**: Track accomplished tasks over time.
-- **Schedule System**: Orchestrates routine background checks and synchronization.
+| Phase | Description |
+|-------|-------------|
+| **Define** | Establish concrete, unambiguous requirements. Do not begin coding. |
+| **Plan** | Draft the approach. Write the plan to the memory bank before any code changes. |
+| **Build** | Execute incremental changes in thin vertical slices. |
+| **Verify** | Run typecheck, lint, and build. All must be clean. |
+| **Review** | Evaluate the output against `DONE_CRITERIA.md`. |
+| **Ship** | Finalize, sync the memory bank, and surface remaining risks. |
 
-## NocoDB Persistence
-VibeForge utilizes NocoDB for persistent storage.
-- Columns are accessed by Title (e.g., `record['Field Name']`).
-- Use `getField` and `getFieldBool` helpers.
+---
 
-## Memory Bank
-- **Mandatory Memory Workflow**: Before ANY work, search the memory bank (`.vibeforge/memory-bank.md`). After ANY work, write back to it.
+### Chat Assistant & Agent Modes
 
-## Skills & MCP Tools
-- **Skills**: Step-by-step workflows (Process over Prose). See `SKILLS_INDEX.md`.
-- **MCP Tools**: Connected context providers configured in `.vibeforge/mcp.json`. 
+The agent operates in one of four distinct modes depending on the nature of the task. Mode selection is explicit — the agent must declare which mode it is operating in.
 
-## Approval, Error Handling & Verification
-- **Auto/Manual Approve**: Critical changes require manual approval.
-- **Error Handling**: Stop and ask if uncertain. Bake in Anti-Rationalization.
-- **Verification Flow**: Verification is Non-Negotiable. "Seems right" is never sufficient. Tests, typechecks, and linters must pass.
+| Mode | Purpose | Key Constraint |
+|------|---------|----------------|
+| **Architect** | High-level system design and dependency mapping. | No code generation. Output is plans and decisions only. |
+| **Code** | Incremental feature implementation and file modification. | Obeys Chesterton's Fence — no code removed without understanding why it exists. |
+| **Ask** | Answering questions from documented evidence or codebase inspection. | No file modification. |
+| **Debug** | Root cause analysis via the Doubt-Driven Development protocol. | CLAIM → EXTRACT → DOUBT → RECONCILE → STOP. |
 
-## Context Management
-- **Token Tracking**: Token progress bar monitors usage.
-- **Auto Compact**: Automatically trigger `/compact` to compress context when usage becomes high.
+---
+
+### Memory Bank — The Project's Brain
+
+The memory bank lives at `.vibeforge/memory-bank.md` and its sub-files within each user project. It is the **single source of truth** for project context, decisions, and progress across sessions.
+
+Because the agent has no persistent memory between sessions, the memory bank **is** the agent's continuity. Every session begins by reading it. Every session ends by writing to it.
+
+**Sub-files initialized by `/init-memory`:**
+
+| File | Purpose |
+|------|---------|
+| `projectBrief.md` | Core goals and project scope |
+| `productContext.md` | User-facing features and product requirements |
+| `activeContext.md` | Current task, focus area, and immediate context |
+| `systemPatterns.md` | Architectural decisions and code conventions |
+| `decisionLog.md` | Record of important architectural or design choices |
+| `progress.md` | Milestones, overall project progress |
+| `knownIssues.md` | Outstanding bugs or structural deficiencies |
+| `fixedDoNotBreak.md` | Non-obvious fixes — must not be reversed |
+| `regressionGuard.md` | Project-specific regression rules |
+| `updateLog.md` | Chronological log of all memory bank updates |
+
+---
+
+### Workspace & File Explorer
+
+- **Progressive Disclosure**: Load only the files and context needed for the current task. Do not dump entire directories into context.
+- **Bi-Directional Sync**: When modifying the project, update the memory bank simultaneously — not after, not later.
+
+---
+
+### Agent Activity & Task Play
+
+- **Agent Activity Log**: Records every tool invocation and step-by-step action taken during a session. Provides a complete audit trail.
+- **Task Play**: Agents follow predefined Skills — structured workflows with explicit entry conditions, checkpoints, and exit criteria — to execute tasks reliably and repeatably.
+- **ActiveTodoStrip**: A live task list generated above the chat input when a prompt is running. Tracks in-progress and completed steps.
+
+---
+
+### Structured Editing & Diff Viewer
+
+- **Structured File Editing**: All file changes are made via the `edit_file` tool, which generates precise inline diffs. Full-file rewrites are used only when no alternative exists.
+- **Diff Viewer**: Displays changes with removed lines in red and added lines in green. Supports both inline and side-by-side views.
+- **Manual Approve Mode**: When enabled, the agent pauses on each diff and waits for explicit user approval before applying the change.
+
+---
+
+### NocoDB Persistence
+
+VibeForge uses NocoDB as its persistent storage layer via the REST API v1.
+
+- **Column access uses the Title key**: `record['Field Name']` — not the snake_case column name.
+- Always use the `getField()` and `getFieldBool()` helper functions from `src/lib/nocodb-fields.ts`.
+- Never assume a field's key format without checking the NocoDB table schema.
+
+---
+
+### Provider Connections
+
+The agent supports multiple LLM providers configured via `.vibeforge/providers.json`:
+
+- OpenAI, Anthropic, Google Gemini, OpenRouter, 9Router, DeepSeek, Groq, Mistral, Ollama, LM Studio.
+- Custom OpenAI-compatible providers via Base URL + API Key + Model ID.
+- Test Connection must display the correct provider display name. Toast messages must never show `undefined`.
+
+---
+
+### MCP Tools
+
+- MCP servers are configured in `.vibeforge/mcp.json`.
+- Once connected, the agent automatically discovers and routes relevant queries through the MCP server's tools.
+- API keys and credentials associated with MCP servers must never be logged or exposed.
+
+---
+
+### Skills
+
+Skills encode **Process over Prose** — they are step-by-step workflows, not descriptions. See `SKILLS_INDEX.md` for the full catalog.
+
+---
+
+### Approval, Error Handling & Verification
+
+- **Manual Approve**: Critical or destructive changes require explicit user approval before execution.
+- **Error Handling**: Stop and ask the user if encountering an unexplained error. Do not rationalize or skip errors.
+- **Verification is Non-Negotiable**: `pnpm run typecheck`, `pnpm run lint`, and `pnpm build` must all pass before any task is declared done.
+
+---
+
+### Context Management
+
+- **Token Progress Bar**: Monitors context window usage in real time.
+- **Auto Compact**: When usage becomes high, trigger `/compact` to compress context. Load only the files required for the immediate next step.

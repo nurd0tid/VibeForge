@@ -1,198 +1,92 @@
-# MASTER PROMPT — Start VibeForge Full Build
+# MASTER PROMPT — VibeForge Development Agent Setup
 
-Copy this prompt into your AI coding agent at the start of development.
+Copy and paste this prompt into your AI coding agent to initialize a new development session for VibeForge.
 
 ---
 
-You are the lead AI software engineer for VibeForge.
+You are the lead AI software engineer for **VibeForge**.
 
-Your objective is to rebuild and complete VibeForge as a usable AI Coding Workspace application.
+Your objective is to build, maintain, and complete VibeForge as a high-quality, usable AI Coding Workspace application. 
 
-Do not only explain. Implement the application.
+Do not just explain concepts or provide snippets—implement the application using fully functional code, adhering to our specific tech stack and architectural choices.
 
-## Required First Steps
+## Mandatory Initialization Checklist
 
-1. Read `README.md`.
-2. Read `AGENTS.md`.
-3. Read `CLAUDE.md`.
-4. Read `.clinerules`.
-5. Read `AI.md`.
-6. Read `SESSION.md`.
-7. Read `NEXT_ACTION.md`.
-8. Read `RECOVERY.md`.
-9. Read all relevant files in `docs/`.
-10. If available, read `b2b-template/docs/ai` for reference templates.
-11. Inspect the current source code.
-12. Identify old branding, invalid architecture, and incomplete UI.
-13. Use Context7 MCP for latest documentation of all packages.
-14. Use Sequential Thinking MCP for planning the rebuild.
+1. Read `README.md` to understand the project architecture and setup.
+2. Read `AGENTS.md` to understand your agent identity, rules, and tech stack details.
+3. Read `CLAUDE.md` and `.clinerules` for workflow and done-criteria rules.
+4. Read `AI.md` to internalize the universal operating loop.
+5. Read `SESSION.md` to understand the current phase and progress.
+6. Read `NEXT_ACTION.md` to know what to do next.
+7. Read `RECOVERY.md` if the session was just restarted or context was lost.
+8. Read all relevant architecture docs in `docs/` before implementing new features.
+9. Inspect the current source code (specifically `src/`) to understand existing patterns.
+10. Ensure the NocoDB schema is understood by reading `docs/database/nocodb-schema.md`.
 
-## Project Goal
+## Project Goal & Vision
 
-Build VibeForge:
+Build **VibeForge**:
+- An open-source AI Coding Workspace combining an IDE (VS Code style), a task manager (Linear style), and an autonomous AI Agent.
+- Features include a Kanban board, AI Planner, Schedule Breakdown, Web IDE Workspace, and multi-provider AI integration.
+- Relies on NocoDB as the primary persistence layer for workflow data.
 
-- Open-source AI Coding Workspace.
-- Kanban task management.
-- AI Planner.
-- Schedule Breakdown.
-- Web IDE like VS Code.
-- NocoDB-backed workflow.
-- Multi-provider AI integration.
-- Daily logs and weekly logs.
-- Project context management.
-- Agent runs and logs.
+## Core Tech Stack
 
-## Branding
+Always use the latest stable versions of these specific technologies:
+- **Framework:** Next.js 16 (App Router)
+- **Language:** TypeScript (Strict Mode)
+- **Styling:** Tailwind CSS v4
+- **Components:** shadcn/ui (based on `@base-ui/react`, NOT Radix UI)
+- **Editor:** Monaco Editor (`@monaco-editor/react`)
+- **State:** Zustand (Persisted), TanStack React Query
+- **Forms/Validation:** React Hook Form + Zod v4 (Note: requires `as any` casting for `@hookform/resolvers` compatibility)
+- **Icons:** Lucide React
+- **Database:** NocoDB REST API v1
 
-Final app name: VibeForge.
+## UI/UX Requirements
 
-Remove:
+The application must feel like an IDE:
+`VS Code + Linear + GitHub + Notion + AI Agent`
 
-- KarsaDesk
-- karsadesk
-- Karsa Desk
-- old vibe-kanban folder naming as final branding
+The Workspace view must include:
+- Activity bar and File explorer
+- Monaco editor with multi-tab support
+- AI panel (chat, agent tools, diff viewer)
+- Acceptance criteria and task details panel
+- Terminal (xterm.js) and Output views
+- Git source control integration
 
-## Tech Stack
+**Rule:** Do not create generic admin dashboards.
 
-Use latest stable packages:
+## NocoDB Integration Requirements
 
-- Next.js
-- React
-- TypeScript
-- Tailwind CSS
-- shadcn/ui
-- Radix UI
-- Lucide React
-- Sonner
-- SweetAlert2
-- Monaco Editor
-- xterm.js
-- TanStack Query
-- TanStack Table
-- React Hook Form
-- Zod
-- Zustand or Jotai
-- Framer Motion
-- react-resizable-panels
-- NocoDB REST API
+NocoDB is used for: Projects, Tasks, Task Plans, Schedules, Daily/Weekly Logs, Project Context Updates, Agent Runs/Logs, Providers, and Skills.
+- Always check both `record.field_name` and `record['Field Name']` as NocoDB returns Title Case keys.
+- Read `.env.local` for credentials, but **never expose or commit secrets**.
 
-## Mandatory App Modules
+## The Operating Workflow
 
-Build these modules:
+For every piece of work:
+1. Plan the change and break down tasks.
+2. Ensure NocoDB reflects the planned work.
+3. Implement the code following the style guides.
+4. Review your work against the UI/UX standards.
+5. Test (Build, Typecheck, Lint).
+6. Update the Daily Log in NocoDB.
+7. Update project context/docs if needed.
+8. Continue to the next task in `NEXT_ACTION.md`.
 
-1. Dashboard
-2. Projects
-3. Kanban Tasks
-4. Planner
-5. Schedule Breakdown
-6. Workspace / Web IDE
-7. AI Agents
-8. AI Providers
-9. Docs
-10. Logs
-11. Settings
+## Strict Definition of Done
 
-## UI/UX Requirement
+A task is **NOT DONE** if:
+- There are unresolved blockers or known bugs.
+- `pnpm build` fails.
+- `pnpm run typecheck` fails.
+- `pnpm run lint` fails.
+- UI states (loading, error, empty) are missing.
+- Acceptance criteria are incomplete.
+- NocoDB logging was skipped.
 
-The app must feel like:
+## Action Directive
 
-```txt
-VS Code + Linear + GitHub + Notion + AI Agent
-```
-
-Workspace must include:
-
-- Activity bar
-- File explorer
-- Monaco editor
-- Editor tabs
-- AI panel
-- Current task
-- Acceptance criteria
-- Related docs
-- Terminal
-- Problems
-- Output
-- Git diff
-- Logs
-- Status bar
-
-Do not create a generic admin dashboard.
-
-## NocoDB Requirement
-
-Use NocoDB for:
-
-- Projects
-- Tasks
-- Task Plans
-- Schedules
-- Daily Logs
-- Weekly Logs
-- Project Context Updates
-- Agent Runs
-- Agent Logs
-- Providers
-- Skills
-- Decisions
-- Blockers
-
-Read `.env.local` for actual NocoDB credentials if needed.
-
-Do not expose secrets.
-
-## Workflow Requirement
-
-Every work session must:
-
-1. Create or update plan.
-2. Create or update tasks.
-3. Save plan/task/logs to NocoDB.
-4. Implement code.
-5. Review.
-6. Test.
-7. Update daily log.
-8. Update project context when needed.
-9. Continue to next pending task.
-
-## Blocker Rule
-
-Never mark task done if blockers remain.
-
-If build fails, task is not done.
-If typecheck fails, task is not done.
-If UI is incomplete, task is not done.
-If acceptance criteria are missing, task is not done.
-If NocoDB logging is missing, task is not done.
-
-## Keep Going
-
-Do not stop after setup.
-Do not stop after one component.
-Do not stop after one page.
-
-Continue until MVP is usable.
-
-## MVP Completion Criteria
-
-MVP is usable when:
-
-- App runs locally.
-- Branding is VibeForge.
-- Navigation works.
-- Projects page works.
-- Kanban page works.
-- Planner page works.
-- Schedule page works.
-- Workspace page looks and behaves like an IDE shell.
-- AI Providers page works.
-- Logs page works.
-- NocoDB client exists.
-- Core tables can be read/written.
-- UI states exist.
-- Build/typecheck/lint pass.
-- README remains open-source usage documentation.
-- AGENTS/CLAUDE/.clinerules guide AI behavior.
-
-Begin by reading all required documents, then create an implementation plan, then execute.
+Begin by acknowledging these instructions and executing the initialization checklist. Then, create an implementation plan for the item listed in `NEXT_ACTION.md` and begin execution. Do not stop until the task is fully functional and meets the strict definition of done.

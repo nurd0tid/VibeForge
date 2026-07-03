@@ -1,74 +1,102 @@
-# VibeForge .clinerules
+# VibeForge — .clinerules
 
-You are working on VibeForge.
+These rules govern all AI agent behavior when working on the VibeForge codebase. They are loaded automatically by Cline, Roo Code, and compatible agents.
 
-## Must Read
+---
 
-Before changing code, read:
+## Required Reading
 
-- AGENTS.md
-- CLAUDE.md
-- MASTER_PROMPT.md
-- SESSION.md
-- NEXT_ACTION.md
-- docs/ai/project-context.md
-- docs/standards/definition-of-done.md
-- docs/workflow/development-workflow.md
-- docs/ui-ux/ui-ux-standard.md
-- docs/database/nocodb-schema.md
+Before making any code changes, read the following documents in order:
 
-Also read `b2b-template/docs/ai` if present.
+| Priority | Document | Purpose |
+|----------|----------|---------|
+| 1 | `AGENTS.md` | Agent constitution and project rules |
+| 2 | `CLAUDE.md` | Agent entry point (references AGENTS.md) |
+| 3 | `AI.md` | Universal operating loop and behavioral rules |
+| 4 | `SESSION.md` | Current phase, recent changes, blockers |
+| 5 | `NEXT_ACTION.md` | Next concrete action to take |
+| 6 | `docs/ai/project-context.md` | Current architectural state |
+| 7 | `docs/standards/definition-of-done.md` | Strict definition of done |
+| 8 | `docs/workflow/development-workflow.md` | Standard development workflow |
+| 9 | `docs/ui-ux/ui-ux-standard.md` | UI/UX design philosophy |
+| 10 | `docs/database/nocodb-schema.md` | NocoDB table schema |
 
-## Never Mark Done If Blocked
+---
 
-A task is not done if:
+## Strict Definition of Done
 
-- There is a blocker.
-- There is a known bug.
-- Typecheck fails.
-- Build fails.
-- Lint fails.
+A task is **NOT** done if any of the following are true:
+
+- There is an unresolved blocker or known bug.
+- `pnpm build` fails.
+- `pnpm run typecheck` fails.
+- `pnpm run lint` has errors in modified files.
 - Acceptance criteria are incomplete.
-- NocoDB sync is missing.
-- Daily log is missing.
-- Context update is needed but not done.
-- UI states are missing.
-- Old branding remains.
+- NocoDB sync is missing (tasks, logs, agent runs).
+- Daily log has not been created.
+- Project context update is needed but not done.
+- UI states (loading, empty, error) are missing.
+- Old branding (KarsaDesk) remains anywhere.
 
-Use `blocked`, `in_progress`, `review`, or `testing`.
+If a task cannot be completed, use one of these statuses: `blocked`, `in_progress`, `review`, or `testing`.
+
+---
 
 ## No Report-Only Completion
 
-Do not only report progress in chat.
+Do not only report progress in chat. All progress **must** be persisted to:
 
-Save progress to:
+- **NocoDB** — daily logs, task status updates, agent run records.
+- **Memory Bank** — `.vibeforge/memory-bank/` files (`activeContext.md`, `progress.md`, `decisionLog.md`).
+- **Session Files** — `SESSION.md` and `NEXT_ACTION.md`.
 
-- NocoDB daily logs
-- NocoDB task updates
-- NocoDB agent logs
-- Markdown context files when needed
+---
 
-## Continue Working
+## Continuous Execution Loop
 
-After completing a task:
+After completing any task:
 
-1. Update task status.
-2. Create daily log.
-3. Update context if needed.
-4. Pick the next task.
-5. Continue.
+1. Update the task status in NocoDB.
+2. Create a daily log entry summarizing the work.
+3. Update project context files if architecture, features, or roadmap changed.
+4. Update `SESSION.md` and `NEXT_ACTION.md`.
+5. Pick the next pending task and continue.
 
-## UI Rule
+Do not stop after one task unless explicitly told to.
 
-The app must feel like VS Code.
+---
 
-Do not build a generic admin dashboard.
+## UI/UX Rule
 
-## MCP Rule
+VibeForge must feel like **VS Code + Linear + AI Agent**.
 
-Use Context7 for package docs.
-Use Sequential Thinking for complex tasks.
+- Do **not** build generic admin dashboards or CRUD-only pages.
+- Every page must have loading, empty, and error states.
+- Use `react-resizable-panels` v4 for panel layouts.
+- `DialogTrigger` from shadcn/ui uses `render={}` prop, **not** `asChild`.
 
-## Secret Rule
+---
 
-You may read `.env.local` for development, but never reveal, copy, commit, or log secrets.
+## MCP Tool Rules
+
+- **Context7**: Always use for up-to-date package/library documentation. Never rely on stale training data.
+- **Sequential Thinking**: Always use for complex, multi-step tasks (architecture, planning, debugging).
+- If MCP provides fresher or more accurate information than model memory, **MCP wins**.
+
+---
+
+## Security Rules
+
+- You may read `.env.local` for development purposes.
+- **Never** reveal, copy, commit, log, or expose secrets in any output.
+- Only non-secret values may use `NEXT_PUBLIC_` prefix.
+- If a token is accidentally exposed, flag it immediately for rotation.
+
+---
+
+## Memory Bank Rules
+
+- **Read before work**: Always review relevant memory bank files before starting a task.
+- **Write after work**: Always update the memory bank after completing a task.
+- The memory bank (`.vibeforge/memory-bank/`) is the persistent source of truth for project context.
+- Use `UMB` or `update memory bank` command to trigger a full sync.

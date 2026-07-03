@@ -1,50 +1,43 @@
-# Skill: Code Review
+---
+name: code-review
+description: Perform a thorough review of code changes for style, security, performance, and correctness before acceptance.
+---
 
-## Purpose
-Perform a thorough review of code changes for style, security, performance, and correctness before acceptance.
+# Overview
+Analyzes code changes against project conventions, framework rules, security requirements, and type safety. Produces a structured findings report with severity levels and actionable feedback.
 
-## When to Use
+# When to Use
 - User asks to review a pull request, diff, or specific file
 - Before finalizing a major feature implementation
 - Periodic codebase health checks
 
-## Pre-Conditions (Read Before Acting)
-- [ ] Read AGENTS.md
-- [ ] Read memory bank (`activeContext.md`, `progress.md`)
-- [ ] Check relevant docs (`CLAUDE.md`, `.clinerules`)
-- [ ] Load the diff or target files into context
-- [ ] Identify the framework/library versions in use
-
-## Steps
+# Process
 1. Analyze structure: Does it follow Next.js 16 App Router conventions?
 2. Check style: Is it using Tailwind v4 and shadcn/ui correctly?
 3. Verify types: Are Zod schemas correct? Are types tight?
 4. Assess security: Are inputs validated? Are secrets exposed?
 5. Review performance: Are there N+1 queries? Unnecessary re-renders?
 6. Check test coverage: Are edge cases handled?
-7. Compile a list of findings with actionable feedback
+7. Compile a list of findings with actionable feedback, file paths, and line numbers
+8. Update memory bank with review outcomes
 
-## Anti-Rationalization Rules
+# Rationalizations
 | Excuse | Rebuttal |
 |--------|----------|
-| "I'll do X later" | No. Do it now or log it as a blocker. |
-| "Looks good to me" | Not enough. Run actual checks mentally or via tools. Point to specific lines. |
-| "They probably tested it" | Assume it's broken until proven otherwise. |
+| "Looks good to me" | Not enough. Point to specific lines with evidence. |
+| "They probably tested it" | Assume it is broken until proven otherwise. |
 | "Style doesn't matter here" | Consistency matters everywhere. Enforce conventions. |
+| "It's a small change, no review needed" | Small changes are where subtle bugs hide. |
 
-## Verification (Definition of Done)
+# Red Flags
+- Feedback is vague without file/line references
+- Security inputs left unvalidated
+- `asChild` used on `DialogTrigger` instead of `render={}`
+- Zod schemas cast incorrectly without `as any` where required
+
+# Verification
 - [ ] All code reviewed line-by-line
 - [ ] Actionable feedback provided with file paths and line numbers
-- [ ] Build passes (mentally verified if not executed)
+- [ ] Findings categorized by severity: Critical, Warning, Nitpick
 - [ ] No undefined/null errors spotted
 - [ ] Memory bank updated with review outcomes
-
-## Output Format
-Structured markdown report categorizing findings by Severity (Critical, Warning, Nitpick) with specific file/line references and suggested fixes.
-
-## Files Affected
-- Target source files (read-only)
-- `.vibeforge/memory-bank/progress.md` (if logging review)
-
-## Failure Handling
-If the code is too large to review in one pass, break it down by module and review sequentially.

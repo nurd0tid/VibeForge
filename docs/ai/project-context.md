@@ -1,59 +1,177 @@
 # AI Project Context
 
-## App
+This document is the canonical reference for the VibeForge project's technical architecture, structure, and current status. AI agents must read this before writing any code.
 
-VibeForge
+---
 
-## Purpose
+## 1. Application Identity
 
-AI Coding Workspace that combines Kanban, Planner, Schedule, Web IDE, AI Agent, Logs, and Project Context.
+| Property | Value |
+|----------|-------|
+| **Name** | VibeForge |
+| **Type** | AI Coding Workspace (open-source) |
+| **Purpose** | Unify Kanban, Planner, Schedule, Web IDE, AI Agent, Logs, and Project Context into a single zero-context-switching workspace |
+| **Branding** | VibeForge exclusively — KarsaDesk is fully removed and must never appear |
 
-## Branding
+---
 
-VibeForge only. KarsaDesk fully removed.
+## 2. Technology Stack
 
-## Current Architecture
+| Layer | Technology |
+|-------|-----------|
+| **Framework** | Next.js 16 (App Router with `src/` directory) |
+| **Styling** | Tailwind CSS v4 via `@tailwindcss/postcss` |
+| **Components** | shadcn/ui built on `@base-ui/react` — **NOT** legacy Radix UI |
+| **State (Client)** | Zustand |
+| **State (Server)** | TanStack Query v5 |
+| **Forms** | React Hook Form + Zod v4 |
+| **Editor** | `@monaco-editor/react` (loaded via `dynamic` import) |
+| **Database** | NocoDB REST API v1 (server-side only) |
+| **Terminal UI** | xterm.js |
+| **Notifications** | Sonner (toasts), SweetAlert2 (confirm dialogs) |
 
-Next.js 16 App Router + Tailwind CSS v4 + shadcn/ui (base-ui/react-based v4) + Zustand + TanStack Query + NocoDB REST API.
+---
 
-## Important Architecture Notes
+## 3. Critical Architecture Notes
 
-- shadcn/ui components use `@base-ui/react` NOT the older Radix UI.
-- `DialogTrigger` from @base-ui/react does NOT support `asChild`.
-- `react-resizable-panels` v4: exports are `Group`, `Panel`, `Separator` (not `PanelGroup`, `PanelResizeHandle`).
-- NocoDB: all access is server-side (API routes). Secrets never in client bundle.
-- NocoDB returns JSON with column **Title** as key (e.g. `record['Field Name']`), not `column_name`. Always use `getField(rec, 'field_name', 'Field Name')` helper.
-- Monaco Editor: `@monaco-editor/react` used with `dynamic` import in workspace page.
+These notes describe breaking changes and non-obvious behaviors. Violating them causes build failures or runtime errors.
 
-## Provider Local Config
+### 3.1 shadcn/ui — @base-ui/react
 
-- AI provider API keys and settings are stored locally in `.vibeforge/providers.json`.
-- Provider records (name, type, base URL, default model) live in NocoDB.
-- API key resolution: `resolveApiKey(providerId, mode, envName, directKey)` from `src/lib/local-config.ts`.
-- Modes: `env` (from process.env), `direct` (stored in local JSON), `none` (no key needed, e.g. Ollama).
+The installed version of shadcn/ui uses `@base-ui/react` as its underlying primitive library, **not** the older Radix UI.
 
-## MCP Support
+- `DialogTrigger` from `@base-ui/react` uses a **`render={}`** prop, **not** the `asChild` prop pattern.
+- Do not import from `@radix-ui/*` unless a specific legacy component requires it and has been verified.
+- Always consult Context7 for `@base-ui/react` API before using any Dialog, Popover, or Select components.
 
-- MCP server configurations stored in `.vibeforge/mcp.json`.
-- API routes: `GET/POST/DELETE /api/mcp` manage servers.
-- Settings page (`/settings`) has a UI to add, remove, enable/disable MCP servers.
-- The agent loop (`/api/ai/chat/route.ts`) reads enabled MCP servers and lists them in the system prompt.
+### 3.2 react-resizable-panels v4
 
-## Agent Loop
+The installed version (`react-resizable-panels` v4) exports different component names than the commonly documented v0/v1:
 
-- `/api/ai/chat/route.ts` implements a server-side agentic loop (up to 10 iterations).
-- SSE stream events: `thought`, `tool_call`, `tool_result`, `content`, `done`.
-- Tools available: `list_directory`, `read_file`, `edit_file`, `run_command`.
-- Agent state (`isAgentRunning`, `agentStatusText`) is stored in Zustand so it persists across tab switches.
+| v4 Export (Correct) | Legacy Export (Wrong) |
+|---------------------|----------------------|
+| `Group` | `PanelGroup` |
+| `Panel` | `Panel` (same) |
+| `Separator` | `PanelResizeHandle` |
 
-## Chat Session Management
+Always use the v4 export names. Import directly from `react-resizable-panels`.
 
-- Sessions auto-save on first user message.
-- `saveChatSession()` in `workspace.store.ts` creates or updates a persisted session.
-- `/new`, `/sessions`, `/clear` commands available in the AI input.
-- `@skill` triggers skill-specific prompts; `#file` triggers file search.
+### 3.3 NocoDB — Server-Side Only
 
-## Folder Structure
+All NocoDB access must go through Next.js API routes (`src/app/api/`). The NocoDB API token must **never** appear in client-side bundles. This means:
+
+- No NocoDB calls in Client Components (`'use client'`)
+- No `NEXT_PUBLIC_` prefix for NocoDB credentials
+- All credentials must be loaded from `process.env` inside API route handlers
+
+### 3.4 NocoDB — Title Case JSON Keys
+
+NocoDB returns API responses with the **column Title** as the JSON key, not the `column_name` (snake_case). This is the single most common source of bugs when reading NocoDB data.
+
+**Canonical access pattern:**
+```typescript
+record['Field Name']      // Title Case — canonical, always works
+record.field_name         // snake_case — unreliable, do NOT rely on this
+```
+
+Use the helper functions from `src/lib/nocodb-fields.ts`:
+
+```typescript
+import { getField, getFieldBool } from '@/lib/nocodb-fields'
+
+const title = getField(record, 'title', 'Title')
+const isActive = getFieldBool(record, 'is_active', 'Is Active')
+```
+
+These helpers check both formats and return the correct value. Always use them when reading NocoDB records.
+
+### 3.5 Zod v4 + @hookform/resolvers
+
+Zod v4 introduced a breaking change in the resolver integration. When using `zodResolver` from `@hookform/resolvers`, you may need to apply an `as any` cast:
+
+```typescript
+resolver: zodResolver(schema) as any
+```
+
+This is a known compatibility issue. Always check Context7 for the latest resolution.
+
+### 3.6 Monaco Editor
+
+Monaco Editor is loaded with `dynamic` import to prevent SSR issues:
+
+```typescript
+import dynamic from 'next/dynamic'
+const MonacoEditor = dynamic(() => import('@monaco-editor/react'), { ssr: false })
+```
+
+Do not attempt to import or use `@monaco-editor/react` in a synchronous module context.
+
+---
+
+## 4. Provider Local Configuration
+
+AI provider configuration follows a hybrid model:
+
+| What | Where Stored |
+|------|-------------|
+| Provider name, type, base URL, default model | NocoDB (`providers` table) |
+| API keys and sensitive secrets | `.vibeforge/providers.json` (local, gitignored) |
+
+**API Key Resolution** — always use the `resolveApiKey()` function from `src/lib/local-config.ts`:
+
+```typescript
+resolveApiKey(providerId, mode, envName, directKey)
+```
+
+| Mode | Behavior |
+|------|---------|
+| `env` | Reads from `process.env[envName]` |
+| `direct` | Reads from `.vibeforge/providers.json` |
+| `none` | No key needed (e.g., self-hosted Ollama) |
+
+---
+
+## 5. MCP Server Configuration
+
+- MCP server configurations are stored in `.vibeforge/mcp.json` (local, gitignored).
+- API routes `GET/POST/DELETE /api/mcp` handle CRUD operations for MCP servers.
+- The Settings page (`/settings`) provides a UI to add, remove, enable, and disable MCP servers.
+- The agent loop (`/api/ai/chat/route.ts`) reads all enabled MCP servers and includes them in the system prompt sent to the AI model.
+
+---
+
+## 6. Agent Loop Architecture
+
+The agentic execution loop is implemented in `/api/ai/chat/route.ts`:
+
+- Runs as a **Server-Sent Events (SSE)** stream.
+- Executes up to **10 agentic iterations** per request.
+- SSE event types: `thought`, `tool_call`, `tool_result`, `content`, `done`.
+
+Available agent tools:
+
+| Tool | Description |
+|------|-------------|
+| `list_directory` | List files and folders in a directory |
+| `read_file` | Read the contents of a file |
+| `edit_file` | Write or overwrite a file |
+| `run_command` | Execute a shell command and capture output |
+
+Agent state (`isAgentRunning`, `agentStatusText`) is stored in Zustand so it persists across page/tab switches without re-mounting.
+
+---
+
+## 7. Chat Session Management
+
+- Sessions auto-save on the first user message in a new conversation.
+- `saveChatSession()` in `workspace.store.ts` creates or updates the persisted session in NocoDB.
+- Slash commands available in the AI input: `/new`, `/sessions`, `/clear`.
+- `@skill` prefix triggers skill-specific system prompts.
+- `#file` prefix triggers the file search flow.
+
+---
+
+## 8. Full Project Folder Structure
 
 ```
 src/
@@ -110,21 +228,31 @@ src/
     └── index.ts                    ← TypeScript types matching NocoDB schema
 ```
 
-## Current Status
+---
 
-MVP Phase 2: IN PROGRESS
-- Build: passing
-- Typecheck: passing
-- All pages implemented with loading/empty/error states
+## 9. Current Build Status
+
+| Check | Status |
+|-------|--------|
+| `pnpm dev` | Passing |
+| `pnpm build` | Passing |
+| `pnpm run typecheck` | Passing |
+| `pnpm run lint` | Passing |
+
+**Phase**: MVP Phase 2 — IN PROGRESS
+
+Completed:
+- All pages implemented with loading, empty, and error states
 - AI Agent loop with tool execution operational
 - MCP server configuration supported
 - Chat session auto-save on first message
 - Agent status persists across tab switches
 
-## Workflow
+---
 
-All work must be stored in NocoDB, not only reported in chat. NocoDB credentials must be configured in `.env.local` first.
+## 10. Core Rules
 
-## Important Rule
-
-Do not mark task done if blockers remain. Do not expose secrets.
+1. All work must be persisted to NocoDB — not only reported in chat. NocoDB credentials must be configured in `.env.local` before any agent work begins.
+2. Do not mark a task as done if any blocker remains unresolved.
+3. Do not expose secrets in any form — not in logs, not in error messages, not in API responses.
+4. Every session must end with an updated daily log and context record in NocoDB.

@@ -1,50 +1,42 @@
-# Skill: Daily Log
+---
+name: daily-log
+description: Document daily progress, summarize completed work, identify blockers, and plan immediate next steps to maintain momentum and context.
+---
 
-## Purpose
-Document daily progress, summarize completed work, identify blockers, and plan immediate next steps to maintain momentum and context.
+# Overview
+Aggregates the day's work into a concise, structured log entry saved to NocoDB, and syncs the memory bank with chronological progress so no context is lost between sessions.
 
-## When to Use
+# When to Use
 - End of a coding session
 - User explicitly requests a daily summary or wrap-up
 - Transitioning between major context shifts
 
-## Pre-Conditions (Read Before Acting)
-- [ ] Read AGENTS.md
-- [ ] Read memory bank (`activeContext.md`, `progress.md`)
-- [ ] Check relevant docs
-- [ ] Review `SESSION.md` and git history (if applicable) for the day's activity
-- [ ] Verify NocoDB connection for logging
-
-## Steps
+# Process
 1. Aggregate the day's completed tasks from chat history, git, or NocoDB
 2. Identify and document any lingering blockers or unresolved issues
 3. Draft a concise summary of the day's achievements
 4. Outline the next logical steps for the following session
-5. Use NocoDB field helpers to map data correctly
+5. Use NocoDB field helpers from `src/lib/nocodb-fields.ts` to map data correctly
 6. Save the log entry to NocoDB
+7. Sync `progress.md` in the memory bank
 
-## Anti-Rationalization Rules
+# Rationalizations
 | Excuse | Rebuttal |
 |--------|----------|
-| "I'll do X later" | No. Do it now or log it as a blocker. |
-| "Nothing notable happened" | Always log something. Even debugging attempts are progress. |
+| "Nothing notable happened" | Always log something. Debugging attempts are progress too. |
 | "I'll just update memory bank" | Memory bank is high-level. Daily log tracks chronological progress. |
 | "Too tired to write details" | Summarize concisely, but do not skip. |
+| "I'll log it tomorrow" | Context fades. Log it now while it is fresh. |
 
-## Verification (Definition of Done)
-- [ ] Summary accurately reflects work done
+# Red Flags
+- Log entry skipped entirely for a session
+- Blockers not explicitly listed
+- NocoDB save not confirmed
+- Memory bank not synced after the log is written
+
+# Verification
+- [ ] Summary accurately reflects work done during the session
 - [ ] Blockers are clearly highlighted
-- [ ] Build passes (ensure current state is stable)
 - [ ] Log entry successfully saved to NocoDB
-- [ ] Memory bank updated (`progress.md` sync)
-
-## Output Format
-Markdown summary printed to chat, followed by confirmation of save to NocoDB.
-
-## Files Affected
-- NocoDB remote records
-- `.vibeforge/memory-bank/progress.md`
-- `SESSION.md`
-
-## Failure Handling
-If NocoDB save fails, write the daily log to a local `.daily-log.md` file and alert the user.
+- [ ] `progress.md` in memory bank synced
+- [ ] Next steps are documented for the following session

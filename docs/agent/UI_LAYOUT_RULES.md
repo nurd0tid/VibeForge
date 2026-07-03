@@ -1,38 +1,50 @@
 # UI Layout Rules
 
-To ensure a seamless IDE-like experience, VibeForge enforces strict layout conventions. 
+To ensure a seamless, IDE-like experience, VibeForge enforces strict layout conventions. These rules govern spacing, positioning, hierarchy, and overflow.
 
-## Layout Areas
-- **Sidebar**: Global navigation and MCP tool configuration.
-- **Explorer**: File tree. Progressive Disclosure rules apply (accordion defaults to collapsed).
-- **Workspace**: The central hub. Contains the Chat, ActiveTodoStrip, and Agent Activity.
-- **Editor / Diff Viewer**: Dedicated space for viewing code changes.
-- **Terminal**: Bottom panel for command execution output.
-- **Right Panel**: Supplemental context, memory bank overview, or detailed task views.
-- **Modals**: For settings, provider configurations, and manual approvals.
+---
 
-## Strict Rules
+## 1. Top-Level Layout Areas
 
-1. **No Overlap**
-   - UI panels must not overlap unless explicitly designed as a temporary floating modal or popover.
-   - Z-index must be carefully managed. Modals > Popovers > Floating Elements > Workspace.
+The UI is divided into fixed functional zones:
 
-2. **Accordion Default Collapsed**
-   - File trees and long lists must use accordions and default to a collapsed state to prevent information overload.
+| Zone | Purpose | Positioning Constraint |
+|------|---------|------------------------|
+| **Sidebar** | Global navigation and MCP configuration. | Fixed width on desktop, drawer on mobile. |
+| **Explorer** | File tree. | Requires progressive disclosure (defaults to collapsed). |
+| **Workspace** | Chat, ActiveTodoStrip, Agent Activity. | Primary fluid area. |
+| **Editor / Diff Viewer** | Dedicated space for viewing code changes. | Flexible width, scrollable vertically. |
+| **Terminal** | Command execution output. | Anchored to bottom, resizable height. |
+| **Right Panel** | Context view, Memory Bank, Task details. | Collapsible/resizable. |
+| **Modals** | Settings, providers, approvals. | Centered over main content, elevated z-index. |
 
-3. **Scrollable Content**
-   - Any container holding dynamic content (Chat, Editor, Terminal) must have `overflow-y-auto`.
-   - The main window should never scroll; scrolling is restricted to internal panels.
+---
 
-4. **Modals Must Not Break**
-   - Modals must have a maximum height (`max-h-[90vh]`) and internal scrolling to ensure they remain usable on small screens.
-   - `DialogTrigger` from shadcn/ui must use the `render={}` prop, NOT `asChild`.
+## 2. Non-Negotiable Rules
 
-5. **Flex & Height Rules**
-   - Use `flex-1` for primary content areas to fill available space.
-   - Use absolute or fixed positioning sparingly, only for global overlays.
-   - The root layout must be `h-screen w-screen overflow-hidden`.
+### A. No Unintentional Overlap
+- UI panels must not overlap unless explicitly designed as a temporary floating modal or popover.
+- Z-index must follow this strict hierarchy: `Modals > Popovers > Floating Tooltips > Workspace Content`.
 
-6. **Responsive Behavior**
-   - On mobile, panels should collapse into drawer menus or stack vertically.
-   - Resizable panels (`react-resizable-panels`) should define strict `minSize` and `maxSize` props.
+### B. Scrolling Rules
+- The main window (`html`, `body`, `#root`) must never scroll.
+- The root layout must enforce `h-screen w-screen overflow-hidden`.
+- Any container holding dynamic content (Chat, Editor, Terminal, Lists) must manage its own scrolling using `overflow-y-auto`.
+
+### C. Accordion Default State
+- File trees, log outputs, and long lists must use accordions and **must default to a collapsed state** to prevent information overload and cognitive fatigue.
+
+### D. Modal Safety
+- Modals must be horizontally and vertically centered.
+- Modals must define a maximum height (`max-h-[90vh]`) and internal scrolling (`overflow-y-auto`) to ensure they do not break or become unusable on small screens.
+- When using shadcn/ui or Base UI `DialogTrigger`, the trigger must use the `render={}` prop, **NOT** the `asChild` prop.
+
+### E. Flexbox and Sizing
+- Use `flex-1` for primary content areas to fill available space symmetrically.
+- Use absolute or fixed positioning sparingly — reserve it for global overlays, toasts, and popovers.
+- Resizable panels (via `react-resizable-panels` v4) must define strict `minSize` and `maxSize` props to prevent layout collapse.
+
+### F. Responsiveness
+- On mobile breakpoints, side panels (Explorer, Right Panel) must collapse into drawer menus.
+- Horizontal arrangements of panels must stack vertically if the viewport is narrower than a configured threshold.
+- Touch targets on mobile must be at least 44x44 pixels.

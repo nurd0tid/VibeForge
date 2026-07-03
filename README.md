@@ -1,185 +1,156 @@
 # VibeForge
 
-Open-source AI Coding Workspace — VS Code + Linear + AI Agent in one.
+![VibeForge Banner](./public/og-image.png)
 
-## Features
+**VibeForge** is an open-source AI Coding Workspace that combines the power of an IDE (like VS Code), a task manager (like Linear), and an autonomous AI Agent in a single, seamless environment.
 
-- **Workspace IDE** — File explorer, Monaco Editor, multi-tab editing, built-in terminal, Git source control.
-- **AI Agent Chat** — Streaming AI assistant with autonomous tool execution, structured diff viewer (inline + side-by-side), Accept/Reject controls, and context usage tracking.
-- **Agent Activity** — Transparent tool-call cards showing file reads, edits, folder browsing, terminal commands, and memory bank operations — all with collapsible accordions.
-- **Task Management** — Kanban board with Play Task button, multi-select batch play, Pending/Done filter tabs, and AI Task Creator with provider/model selection.
-- **Memory Bank** — `/init-memory` creates 10 context files (projectBrief, activeContext, decisionLog, progress, etc.) in `.vibeforge/memory-bank/`. Agent reads before work, writes after.
-- **Provider Agnostic** — OpenAI, Anthropic, Gemini, OpenRouter, 9Router, DeepSeek, Mistral, Groq, Ollama, LM Studio, and any OpenAI-compatible endpoint. Context window and max output tokens configurable (-1 = unlimited).
-- **NocoDB Persistence** — Projects, Tasks, Daily Logs, Weekly Logs, Schedules, and Agent Runs synced to NocoDB.
-- **Daily & Weekly Logs** — Real NocoDB mutations for creating daily and weekly progress summaries.
-- **Auto/Manual Approve** — Toggle in Settings popover. Manual mode shows Accept/Reject buttons on diffs. Auto mode applies immediately.
-- **Context Management** — Token usage progress bar, `/compact` command, and auto-compact at 90% threshold.
-- **MCP Support** — Configure external MCP servers in Settings to extend agent capabilities.
-- **15 Agent Skills** — Structured skill docs with anti-rationalization tables, verification checklists, and failure handling.
-- **17 Agent Docs** — Comprehensive documentation in `docs/agent/` covering workflow, memory bank, MCP, structured editing, and regression guards.
+It is designed to give you complete control and visibility over what your AI agent is doing, bridging the gap between local development and AI-assisted coding.
 
-## Tech Stack
+---
+
+## 🌟 Key Features
+
+- **Workspace IDE**: A fully featured environment with a file explorer, Monaco Editor, multi-tab editing, built-in terminal, and Git source control.
+- **AI Agent Chat**: A streaming AI assistant with autonomous tool execution. Features a structured diff viewer (inline + side-by-side) with Accept/Reject controls and active context tracking.
+- **Transparent Agent Activity**: Actionable tool-call cards showing file reads, edits, folder browsing, terminal commands, and memory bank operations—all organized in collapsible accordions.
+- **Integrated Task Management**: A Kanban board with "Play Task" functionality, multi-select batch play, Pending/Done filter tabs, and an AI Task Creator.
+- **Memory Bank**: Command `/init-memory` scaffolds 10 context files (projectBrief, activeContext, decisionLog, etc.) in `.vibeforge/memory-bank/`. The agent reads these before work and updates them after.
+- **Provider Agnostic**: Use any provider! OpenAI, Anthropic, Gemini, OpenRouter, DeepSeek, Mistral, Groq, Ollama, LM Studio, or any OpenAI-compatible endpoint.
+- **NocoDB Persistence**: All your Projects, Tasks, Daily Logs, Weekly Logs, Schedules, and Agent Runs are securely synced to NocoDB (Cloud or Self-Hosted).
+- **Auto/Manual Diff Approval**: Toggle in Settings. Manual mode requires your explicit approval for code changes, while Auto mode applies them instantly.
+- **Context Management**: Visual token usage progress bar, automatic context compaction at 90% threshold, and manual `/compact` command.
+- **MCP Support**: Configure external Model Context Protocol (MCP) servers in Settings to extend the agent's capabilities (e.g., direct docs fetching via Context7).
+- **15 Built-in Agent Skills**: Structured workflows with anti-rationalization tables, verification checklists, and robust failure handling.
+
+## 🛠️ Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Framework | Next.js 16 (App Router) |
-| UI | React 19, Tailwind CSS v4, shadcn/ui (@base-ui/react) |
-| State | Zustand (persisted) |
-| Data | TanStack React Query |
-| Editor | Monaco Editor (@monaco-editor/react) |
-| Database | NocoDB REST API v1 |
-| Icons | Lucide React |
-
-## Prerequisites
-
-### NocoDB Setup (Required)
-
-VibeForge uses NocoDB as the database backend. You have **two options** to set it up:
+| **Framework** | Next.js 16 (App Router) |
+| **UI** | React 19, Tailwind CSS v4, shadcn/ui (via `@base-ui/react`) |
+| **State** | Zustand (Persisted) |
+| **Data Fetching**| TanStack React Query |
+| **Editor** | Monaco Editor (`@monaco-editor/react`) |
+| **Database** | NocoDB REST API v1 |
+| **Icons** | Lucide React |
 
 ---
 
-#### Option A: NocoDB Cloud (Easiest)
+## 🚀 Getting Started
 
-Use NocoDB's free hosted cloud — no Docker or server needed.
+### Prerequisites: NocoDB Setup (Required)
 
-1. Go to **https://app.nocodb.com/** and **Sign Up** or **Log In**
-2. Create a new **Base** (database)
-3. Create the required tables (see below)
-4. Get your API token from: **Team & Settings → Tokens → Add Token**
-5. Your Base URL is `https://app.nocodb.com`
-6. Get your `Workspace ID` and `Base ID` from the URL:
-   ```
-   https://app.nocodb.com/#/nc/{WORKSPACE_ID}/{BASE_ID}
-   ```
-7. Fill your `.env.local`:
-   ```env
-   NOCODB_BASE_URL=https://app.nocodb.com
-   NOCODB_WORKSPACE_ID=your_workspace_id
-   NOCODB_BASE_ID=your_base_id
-   NOCODB_API_TOKEN=your_api_token
-   ```
+VibeForge uses **NocoDB** as the database backend. You must set this up before running the app.
 
----
+#### Option A: NocoDB Cloud (Easiest & Free)
+1. Go to [app.nocodb.com](https://app.nocodb.com/) and Sign Up/Log In.
+2. Create a new **Base** (database).
+3. Get your API token from: **Team & Settings → Tokens → Add Token**.
+4. Your Base URL is `https://app.nocodb.com`.
+5. Get your `Workspace ID` and `Base ID` from the URL: `https://app.nocodb.com/#/nc/{WORKSPACE_ID}/{BASE_ID}`.
 
-#### Option B: Self-Hosted via Docker
-
-Run NocoDB locally on your machine.
-
-1. **Run NocoDB** via Docker:
+#### Option B: Self-Hosted (Docker)
+1. Run NocoDB locally:
    ```bash
    docker run -d --name nocodb -p 8080:8080 nocodb/nocodb:latest
    ```
-   Or see the full guide: **https://docs.nocodb.com/getting-started/self-hosted/installation/**
+2. Open [http://localhost:8080](http://localhost:8080) and create an account, workspace, and base.
+3. Get your API token from **Team & Settings → Tokens → Add Token**.
+4. Extract IDs from the URL as above. Your Base URL is `http://localhost:8080`.
 
-2. **Open NocoDB UI** at [http://localhost:8080](http://localhost:8080), create an account
-3. Create a new **Workspace** and a new **Base** (database)
-4. Get your API token from: **Team & Settings → Tokens → Add Token**
-5. Get your IDs from the URL:
+### Setup Instructions
+
+1. **Install Dependencies**
+   ```bash
+   pnpm install
    ```
-   http://localhost:8080/#/nc/{WORKSPACE_ID}/{BASE_ID}
+
+2. **Configure Environment**
+   ```bash
+   cp .env.example .env.local
    ```
-6. Fill your `.env.local`:
+   Fill in your NocoDB credentials in `.env.local`:
    ```env
-   NOCODB_BASE_URL=http://localhost:8080
-   NOCODB_WORKSPACE_ID=your_workspace_id
-   NOCODB_BASE_ID=your_base_id
-   NOCODB_API_TOKEN=your_api_token
+   NOCODB_BASE_URL=
+   NOCODB_WORKSPACE_ID=
+   NOCODB_BASE_ID=
+   NOCODB_API_TOKEN=
    ```
 
----
+3. **Initialize Database Tables**
+   ```bash
+   node scripts/setup-nocodb.js
+   ```
 
-#### Required Tables
-
-After setting up NocoDB (cloud or Docker), create these tables with **exact names**:
-
-| Table Name | Purpose |
-|-----------|---------|
-| `projects` | Project records |
-| `tasks` | Task/Kanban items |
-| `schedules` | Scheduled work items |
-| `daily_logs` | Daily progress logs |
-| `weekly_logs` | Weekly summaries |
-| `agent_runs` | AI agent execution history |
-| `providers` | AI provider configurations |
-| `task_plans` | Task plans |
-
-> **Note:** VibeForge runs on port **3456** by default to avoid conflicting with your user projects which typically run on port 3000.
+4. **Run the App**
+   ```bash
+   pnpm dev
+   ```
+   > **Note:** VibeForge runs on port **3456** by default to avoid conflicting with your user projects which typically run on port 3000. Open [http://localhost:3456](http://localhost:3456).
 
 ---
 
-## Setup
+## ⚡ Performance Optimization
 
-```bash
-# 1. Install
-pnpm install
-
-# 2. Configure environment (see NocoDB Setup above first)
-cp .env.example .env.local
-# Fill in NOCODB_BASE_URL, NOCODB_WORKSPACE_ID, NOCODB_BASE_ID, NOCODB_API_TOKEN
-
-# 3. Initialize NocoDB tables automatically (Requires Node.js)
-node scripts/setup-nocodb.js
-
-# 4. Run
-pnpm dev
-```
-
-Open [http://localhost:3456](http://localhost:3456).
-
-## Commands
-
-| Command | Description |
-|---------|-------------|
-| `pnpm dev` | Start development server |
-| `pnpm build` | Production build |
-| `pnpm run typecheck` | TypeScript check |
-| `pnpm run lint` | ESLint check |
-
-## Workspace Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+S` / `Cmd+S` | Save active file |
-| `Enter` | Send message |
-| `Shift+Enter` | New line in chat |
-| `@` | Trigger skill/file menu |
-| `#` | Trigger file search |
-| `/` | Trigger command menu |
-
-## Chat Commands
-
-| Command | Action |
-|---------|--------|
-| `/new` | New chat session |
-| `/clear` | Clear conversation |
-| `/sessions` | Show saved sessions |
-| `/compact` | Compress context |
-| `/mcp-list` | List MCP servers |
-| `/init-memory` | Initialize memory bank for current project |
-
-## AI Provider Setup
-
-1. Go to **Providers** page.
-2. Click **Add Provider** and select a preset (OpenAI, Anthropic, etc.) or use Custom OpenAI-Compatible.
-3. Enter Base URL, API Key, and Default Model.
-4. Set Context Window and Max Output Tokens (-1 = unlimited / provider default).
-5. Click **Test Connection** to verify.
-
-## Performance Optimization
-
-For the fastest and most lightweight workspace experience (especially when switching pages or streaming large outputs), run the production build instead of the development server:
+For the fastest, most lightweight workspace experience (especially when streaming large outputs), we highly recommend running the production build:
 
 ```bash
 pnpm build
 pnpm start
 ```
 
-Using the production build drastically reduces memory usage, eliminates hot-reloads, and provides a near-instant IDE response.
+*This drastically reduces memory usage, eliminates hot-reloads, and provides a near-instant IDE response.*
 
-## Documentation
+---
 
-All documentation is browsable in the **Docs** page inside the app. Categories include: Agent Guide, Architecture, Skills, AI & MCP, Workflow, Standards, Database, UI/UX, Checklists, Templates, ADR, Prompts, Setup, Deployment, and Logging.
+## ⌨️ Shortcuts & Commands
 
-## Contributing
+### Workspace Shortcuts
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+S` / `Cmd+S` | Save active file |
+| `Enter` | Send chat message |
+| `Shift+Enter` | New line in chat |
+| `@` | Trigger skill/file context menu |
+| `#` | Trigger file search |
+| `/` | Trigger command menu |
 
-Contributions welcome. Follow the guidelines in `AGENTS.md` and `docs/agent/DONE_CRITERIA.md` before submitting PRs.
+### Chat Commands
+| Command | Action |
+|---------|--------|
+| `/new` | Start a new chat session |
+| `/clear` | Clear conversation history |
+| `/sessions` | View saved sessions |
+| `/compact` | Compress LLM context |
+| `/mcp-list` | View connected MCP servers |
+| `/init-memory` | Initialize memory bank for current project |
+
+---
+
+## 🤖 AI Provider Setup
+
+1. Navigate to the **Providers** page in VibeForge.
+2. Click **Add Provider**. Select a preset (OpenAI, Anthropic, Gemini, etc.) or use Custom.
+3. Enter your Base URL, API Key, and Default Model.
+4. Set Context Window and Max Output Tokens (use `-1` for provider defaults).
+5. Click **Test Connection** to verify it works, then save.
+
+---
+
+## 📖 Documentation
+
+All documentation is browsable directly inside the **Docs** page within the app. Categories include:
+- Architecture & Tech Stack
+- AI & MCP Integration
+- AI Agent Workflows & Skills
+- UI/UX Standards
+- Database Schemas
+- Prompt Templates & Checklists
+
+## 🤝 Contributing
+
+Contributions are heavily encouraged! Before submitting a Pull Request, please read our [CONTRIBUTING.md](./CONTRIBUTING.md) and ensure you align with the rules set in `AGENTS.md`.
+
+---
+
+*Built for developers who want the power of autonomous AI with the safety of a structured, observable environment.*

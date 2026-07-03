@@ -1,34 +1,97 @@
-# VibeForge Documentation Index
+# VibeForge — Documentation Index
 
-## Human Docs
+A structured index of all documentation in this repository, organized by audience and purpose.
 
-- README.md
-- CONTRIBUTING.md
+---
 
-## AI Root Rules
+## For Human Developers
 
-- AGENTS.md
-- CLAUDE.md
-- AI.md
-- .clinerules
-- MASTER_PROMPT.md
-- SESSION.md
-- NEXT_ACTION.md
-- RECOVERY.md
+| Document | Purpose |
+|----------|---------|
+| `README.md` | Project overview, feature list, setup guide, and quick reference |
+| `CONTRIBUTING.md` | How to contribute, PR checklist, development principles |
 
-## Main Docs
+---
 
-- docs/overview/product-requirements.md
-- docs/architecture/system-architecture.md
-- docs/ui-ux/ui-ux-standard.md
-- docs/database/nocodb-schema.md
-- docs/workflow/development-workflow.md
-- docs/standards/definition-of-done.md
+## For AI Agents (Root Configuration)
 
-## MCP
+These files must be read by any AI agent before making changes:
 
-- docs/ai/mcp-rules.md
+| Document | Purpose |
+|----------|---------|
+| `AGENTS.md` | AI Agent Constitution — the primary rules document |
+| `CLAUDE.md` | Agent-specific entry point (points to AGENTS.md) |
+| `AI.md` | Universal operating loop and behavioral rules |
+| `.clinerules` | Workflow rules and strict done criteria |
+| `MASTER_PROMPT.md` | Full onboarding prompt for new development sessions |
+| `SESSION.md` | Current session phase, recent changes, active blockers |
+| `NEXT_ACTION.md` | The next concrete action to take |
+| `RECOVERY.md` | Protocol for recovering from context/session loss |
 
-## B2B Template Reference
+---
 
-- b2b-template/docs/ai/
+## Architecture & Standards
+
+| Document | Purpose |
+|----------|---------|
+| `docs/overview/product-requirements.md` | Full product requirements spec |
+| `docs/architecture/system-architecture.md` | High-level system architecture |
+| `docs/architecture/frontend-architecture.md` | Frontend structure and patterns |
+| `docs/architecture/backend-architecture.md` | Backend/API structure |
+| `docs/ui-ux/ui-ux-standard.md` | UI/UX rules and design philosophy |
+| `docs/standards/definition-of-done.md` | Strict DoD for all tasks |
+| `docs/standards/coding-standard.md` | Code style and conventions |
+| `docs/standards/security-standard.md` | Security rules |
+
+---
+
+## Database
+
+| Document | Purpose |
+|----------|---------|
+| `docs/database/nocodb-schema.md` | Full NocoDB table schema |
+| `docs/database/nocodb-setup.md` | NocoDB setup and configuration guide |
+
+---
+
+## AI & MCP
+
+| Document | Purpose |
+|----------|---------|
+| `docs/ai/mcp-rules.md` | MCP server configuration rules |
+| `docs/ai/project-context.md` | Current project context for AI agents |
+| `docs/ai/provider-rules.md` | AI provider integration rules |
+| `docs/ai/implementation-rules.md` | Implementation-level coding rules |
+
+---
+
+## Agent Guide (`docs/agent/`)
+
+| Document | Purpose |
+|----------|---------|
+| `HOW_VIBEFORGE_WORKS.md` | System architecture overview for agents |
+| `DONE_CRITERIA.md` | Strict, agent-facing definition of done |
+| `REGRESSION_GUARD.md` | Rules to prevent regressions |
+| `AGENT_WORKFLOW.md` | Step-by-step agent workflow |
+| `MEMORY_BANK_GUIDE.md` | How to use and update the memory bank |
+| `PROVIDER_CONNECTIONS.md` | Provider connection setup rules |
+| `STRUCTURED_EDITING.md` | How structured file diffs work |
+| `DIFF_VIEWER_RULES.md` | Diff viewer behavior rules |
+| `MCP_SETUP.md` | MCP server setup from within VibeForge |
+| `UI_LAYOUT_RULES.md` | IDE layout composition rules |
+
+---
+
+## Workflow
+
+| Document | Purpose |
+|----------|---------|
+| `docs/workflow/development-workflow.md` | The standard development workflow |
+| `docs/workflow/agent-operating-loop.md` | Agent's operating loop documentation |
+| `docs/workflow/blocker-policy.md` | How to handle and escalate blockers |
+
+---
+
+## Skills (`docs/skills/`)
+
+Skills are structured workflows the AI agent follows for specific recurring tasks. See `docs/agent/SKILLS_INDEX.md` for the full list.

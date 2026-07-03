@@ -1,33 +1,54 @@
 # Frontend Architecture
 
-## Setup
-The VibeForge frontend is built on Next.js 16 (App Router) utilizing React 19 features.
+## Framework Core
+VibeForge's frontend is powered by Next.js 16 (App Router) utilizing React 19. The entire architecture embraces Server Components by default, pushing interactivity to Client Components (`'use client'`) only at the leaf nodes or feature boundaries.
 
-## Styling & Theme
-- **Tailwind CSS v4:** Uses the latest v4 engine with `@tailwindcss/postcss`. Configuration is done via CSS variables rather than a legacy config file.
-- **Dark Mode Support:** Managed via `next-themes` with custom slate/zinc dark variables matching VS Code's editor theme.
-- **Font Stack:**
-  - UI Font: Geist Sans or Inter.
-  - Code/Terminal Font: JetBrains Mono (primary), Geist Mono, Fira Code, monospace fallbacks.
+## Styling & Theming
 
-## Components & Base UI
-- **shadcn/ui via Base UI:** All interactive primitives are built using `@base-ui/react` (rather than Radix UI).
-- **Dialogs & Triggers:** Dialog triggers use the `render={}` render prop pattern instead of `asChild` (e.g., `<DialogTrigger render={<Button>Trigger</Button>} />`).
-- **Form Handling:** Uses `react-hook-form` coupled with Zod resolvers.
-- **Toasts:** Sonner (`sonner`) is the standard notification helper.
-- **Alerts:** SweetAlert2 (`sweetalert2`) handles destructive/sensitive confirmations.
-- **Panels:** Resizable layouts use `react-resizable-panels` (v4).
+- **Tailwind CSS v4:** Uses the new v4 engine with `@tailwindcss/postcss`. There is no traditional `tailwind.config.ts`. Configuration is managed directly in CSS variables within the main stylesheet.
+- **Color System:** Dark mode is enforced as the primary experience using `next-themes`. The palette aligns with standard IDE dark themes (slate/zinc).
+- **Typography:**
+  - **Interface:** Geist Sans / Inter.
+  - **Code/Editor:** JetBrains Mono (primary), Geist Mono.
+
+## Component Architecture
+
+- **Base UI Integration:** `shadcn/ui` components are built on `@base-ui/react` (not Radix UI). This modern foundation provides unstyled, accessible primitives.
+- **Render Props:** Components like `DialogTrigger` utilize the `render={}` render prop pattern instead of the legacy `asChild` pattern.
+  - *Correct:* `<DialogTrigger render={<Button>Click me</Button>} />`
+  - *Incorrect:* `<DialogTrigger asChild><Button>Click me</Button></DialogTrigger>`
+- **Forms & Validation:** `react-hook-form` is coupled with `zodResolver`. Due to typing constraints, the resolver must be cast: `zodResolver(schema) as any`.
 
 ## State Management
-1. **Zustand:**
-   - `useUiStore` for global UI configurations (active project, sidebar collapse, etc.).
-   - `useWorkspaceStore` for managing Monaco Editor workspace states (open tabs, active file, dirty files, AI message history, terminal outputs).
-2. **React Query v5:**
-   - Cache management for server-driven data (projects list, tasks list, schedules, daily logs).
-   - Custom React hooks in `src/features/` encapsulate queries and mutations.
 
-## Page Structure
-- **Workspace IDE (`src/app/(app)/workspace/`)**: A flexible horizontal/vertical resizable editor dashboard containing Monaco Editor, file explorer tree, command line output logs, and the AI agent chat pane.
-- **Schedule Board (`src/app/(app)/schedule/`)**: Weekly planner (Monday to Sunday) showing real dates, navigation buttons, and scheduled cards matching by scheduled date or falling back to day index.
-- **Projects (`src/app/(app)/projects/`)**: Full details page listing workspaces, showing active git details (branch, clean/dirty), validate path checks, and detail sliding sheets.
-- **Docs (`src/app/(app)/docs/`)**: Custom Markdown reader showing system documentation in high-contrast prose style.
+State is divided by domain responsibility to avoid prop drilling and monolithic stores:
+
+| Store Type | Technology | Purpose |
+|------------|------------|---------|
+| **Server State** | TanStack Query v5 | Handles all asynchronous data (NocoDB tables, git status, file system fetches). Features caching, optimistic updates, and background refetching. |
+| **Workspace State** | Zustand | `useWorkspaceStore` manages the Monaco Editor IDE experience (open tabs, active file, dirtiness, terminal logs, AI chat history). |
+| **UI State** | Zustand | `useUiStore` manages global layout states (sidebar collapse, active project context, global modals). |
+
+## Layouts & Sub-Systems
+
+### 1. Workspace IDE (`src/app/(app)/workspace/`)
+The core interface where code generation happens.
+- **Panels:** Powered by `react-resizable-panels` v4. Uses `<PanelGroup>`, `<Panel>`, and `<PanelResizeHandle>` directly (deprecated v3 syntax is strictly forbidden).
+- **Editor:** `@monaco-editor/react` provides VS Code-like syntax highlighting and interaction.
+- **Components:** File explorer tree, terminal output log, and the AI agent chat pane interface.
+
+### 2. Schedule Board (`src/app/(app)/schedule/`)
+A calendar-based planning view.
+- Maps NocoDB `schedules` records to a Monday-Sunday grid.
+- Allows dragging or assigning NocoDB tasks to specific dates.
+
+### 3. Projects Dashboard (`src/app/(app)/projects/`)
+The entry point.
+- Lists available local workspaces.
+- Checks `git` status to ensure working directories are clean.
+- Validates local file paths via `/api/workspace/validate-path`.
+
+### 4. Docs Reader (`src/app/(app)/docs/`)
+A dedicated Markdown rendering engine for project documentation.
+- Renders `.md` files in a high-contrast prose style.
+- Syntax highlighting for code blocks within documentation.

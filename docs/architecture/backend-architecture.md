@@ -1,39 +1,68 @@
 # Backend Architecture
 
 ## Overview
-VibeForge's backend runs inside Next.js API Route Handlers (App Router). There is no separate backend server — all server-side logic executes in Next.js server functions.
+VibeForge has no separate backend server. All server-side operations execute inside **Next.js 16 API Route Handlers** (`src/app/api/`), running in the Next.js Node.js runtime. This means the "backend" lives within the same repository and process as the frontend.
 
 ## API Conventions
-- **Route Structure:** `src/app/api/<resource>/route.ts` for collections, `src/app/api/<resource>/[id]/route.ts` for individual records.
-- **Standard Response:** `{ ok: true, data: ... }` or `{ ok: false, error: { code, message } }`.
-- **NocoDB Integration:** All NocoDB calls use column **Title** keys (not `column_name`). When reading records, always check both `record.field_name` and `record['Field Name']`.
+
+### Route Structure
+- `src/app/api/<resource>/route.ts` — collection endpoints (LIST, CREATE)
+- `src/app/api/<resource>/[id]/route.ts` — individual record endpoints (GET, UPDATE, DELETE)
+
+### Standard Response Format
+All API routes return a predictable JSON structure:
+```json
+// Success
+{ "ok": true, "data": { ... } }
+
+// Error
+{ "ok": false, "error": { "code": "NOT_FOUND", "message": "Task not found." } }
+```
+
+### HTTP Status Codes
+- `200 OK` — Successful GET or action.
+- `201 Created` — Successful POST creating a resource.
+- `400 Bad Request` — Invalid input or schema validation failure (Zod).
+- `404 Not Found` — Resource does not exist.
+- `500 Internal Server Error` — Unexpected system-level error.
 
 ## Key API Endpoints
-| Route | Method | Purpose |
-|---|---|---|
-| `/api/projects` | GET, POST | List/create projects |
-| `/api/projects/[id]` | GET, PATCH, DELETE | Single project operations |
-| `/api/tasks` | GET, POST | List/create tasks |
-| `/api/schedules` | GET, POST | List/create schedule items |
-| `/api/workspace/tree` | GET | Read project file tree |
-| `/api/workspace/file` | GET, PUT | Read/write individual files |
-| `/api/workspace/browse` | GET | Browse directories for folder picker |
-| `/api/workspace/validate-path` | POST | Validate local project path |
-| `/api/git/info` | GET | Get git status, branch, and remote info |
-| `/api/docs` | GET | Serve project documentation files |
-| `/api/providers` | GET, POST | Manage AI provider configurations |
 
-## File System Access
-- File system operations use Node.js `fs/promises` and `path` modules.
-- Path traversal prevention: All paths are resolved against a whitelist of project directories or the configured `VIBEFORGE_WORKSPACE_ROOT`.
-- Sensitive files (`.env`, `.env.local`) are excluded from tree listings by default.
+| Route | Methods | Purpose |
+|-------|---------|---------|
+| `/api/projects` | GET, POST | List all projects; create a new project |
+| `/api/projects/[id]` | GET, PATCH, DELETE | Single project CRUD |
+| `/api/tasks` | GET, POST | List tasks; create task |
+| `/api/tasks/[id]` | GET, PATCH, DELETE | Single task CRUD |
+| `/api/schedules` | GET, POST | List schedule items; create schedule entry |
+| `/api/daily-logs` | GET, POST | List daily logs; create daily log entry |
+| `/api/workspace/tree` | GET | Recursively list the project's file tree |
+| `/api/workspace/file` | GET, PUT | Read or write a file by path |
+| `/api/workspace/browse` | GET | Browse the local file system for directory picking |
+| `/api/workspace/validate-path` | POST | Validate that a given path exists and is accessible |
+| `/api/git/info` | GET | Get git branch, status (clean/dirty), and remote URL |
+| `/api/docs` | GET | Serve and list `.md` documentation files |
+| `/api/providers` | GET, POST | List AI provider configs; add a provider |
+| `/api/providers/[id]` | PATCH, DELETE | Update or remove a provider configuration |
+| `/api/providers/test` | POST | Test a provider connection and return display name/model info |
+
+## File System Security
+
+All file system API routes (file tree, read/write) enforce the following:
+1. **Whitelist Validation:** Paths are checked against the active project's root path or the `VIBEFORGE_WORKSPACE_ROOT` environment variable.
+2. **Traversal Prevention:** `../` sequences are normalized and blocked.
+3. **Sensitive File Exclusion:** `.env`, `.env.local`, `.git/config`, and similar files are excluded from tree listings and read endpoints.
 
 ## NocoDB Integration
-- **Connection:** REST API v1 via `NOCODB_BASE_URL` and `NOCODB_API_TOKEN` environment variables.
-- **Tables:** Projects, Tasks, TaskPlans, Schedules, DailyLogs, WeeklyLogs, AgentRuns, AgentLogs, Providers, Skills, Decisions, Blockers, ProjectContextUpdates.
-- **Error Handling:** Graceful handling of NocoDB errors (not configured, invalid token, table not found, network error).
+
+- **Connection:** REST API v1 via `NOCODB_BASE_URL` + `NOCODB_API_TOKEN` env variables.
+- **Field Access:** Always use the **Title** column key (not snake_case `column_name`) when reading NocoDB JSON.
+  - Use `getField(record, 'Field Name')` and `getFieldBool(record, 'Boolean Field')` helpers from `src/lib/nocodb-fields.ts`.
+- **Error Handling:** Route handlers gracefully catch NocoDB errors (401 Unauthorized, 404 Table Not Found, network errors) and return structured error responses rather than crashing.
 
 ## Git Operations
-- Uses `child_process.exec` to run `git` commands safely on project directories.
-- Supports: `git status`, `git branch`, `git remote`, `git diff`, `git log`.
-- Results are parsed and returned as structured JSON responses.
+
+Git commands are executed using Node.js `child_process.exec` wrapped in a safe utility:
+- Allowed commands: `git status`, `git branch`, `git remote -v`, `git log --oneline -10`, `git diff --stat`.
+- All commands are executed in a sandboxed project directory to prevent injection.
+- Results are parsed into structured JSON before returning to the UI.

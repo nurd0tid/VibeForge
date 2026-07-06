@@ -575,7 +575,8 @@ When you need to use a tool, output the <tool_use> block. The system will execut
                 .replace(/```tool[\s\S]*?```/g, '')
                 .trim();
               fullOutputText = cleanText;
-              emit('content', { delta: cleanText, replace: true });
+              // Only replace if it's the very first iteration, else append
+              emit('content', { delta: cleanText, replace: iteration === 1 });
               break;
             }
 
@@ -585,7 +586,7 @@ When you need to use a tool, output the <tool_use> block. The system will execut
               .replace(/```tool[\s\S]*?```/g, '')
               .trim();
             if (thoughtText) {
-              emit('content', { delta: thoughtText, replace: true });
+              emit('content', { delta: '\n\n' + thoughtText, replace: false });
               emit('thought', { text: thoughtText });
             }
 
@@ -636,6 +637,21 @@ When you need to use a tool, output the <tool_use> block. The system will execut
           emit('done', {});
         } catch (e: unknown) {
           const rawMsg = e instanceof Error ? e.message : String(e);
+          
+          try {
+            const logDir = path.resolve(workspaceRoot, '.vibeforge/agent-logs');
+            await fs.mkdir(logDir, { recursive: true });
+            const logPath = path.join(logDir, 'chat_error.log');
+            const logData = {
+              timestamp: new Date().toISOString(),
+              error: e instanceof Error ? { message: e.message, stack: e.stack } : String(e),
+              lastMessages: messages.slice(-2),
+            };
+            await fs.appendFile(logPath, JSON.stringify(logData, null, 2) + '\n\n', 'utf-8');
+          } catch (logErr) {
+            console.error('Failed to write chat_error.log', logErr);
+          }
+
           const isNetworkError = rawMsg === 'fetch failed' || rawMsg.includes('ECONNREFUSED') || rawMsg.includes('ENOTFOUND') || rawMsg.includes('network');
           const msg = isNetworkError 
             ? `Cannot connect to provider at ${url}. Check if the Base URL is correct and the server is reachable.`

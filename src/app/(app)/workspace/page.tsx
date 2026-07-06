@@ -669,11 +669,8 @@ export default function WorkspacePage() {
                   }
                 }
               } else if (eventType === 'content_stream') {
-                const hasToolCalls = currentSteps.some(s => s.type === 'tool_call');
-                if (!hasToolCalls) {
-                  const delta = (data.delta || '').replace(/<tool_use>[\s\S]*?<\/tool_use>/g, '').replace(/<[^>]*$/g, '');
-                  if (delta.trim()) fullContent += delta;
-                }
+                const delta = (data.delta || '').replace(/<tool_use>[\s\S]*?<\/tool_use>/g, '').replace(/<[^>]*$/g, '');
+                if (delta.trim()) fullContent += delta;
               } else if (eventType === 'content') {
                 if (data.replace) {
                   fullContent = data.delta || '';
@@ -1250,7 +1247,12 @@ Follow the @task-play-workflow skill rules. Read the memory bank and related fil
                       explorerCtxMenu.isDir ? { label: 'New Folder', action: async () => {
                         const name = window.prompt('Folder name:');
                         if (!name?.trim()) return;
-                        await fetch('/api/workspace/terminal/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command: `mkdir -p "${explorerCtxMenu.path}/${name.trim()}"`, cwd: projectPath }) });
+                        const newDir = `${explorerCtxMenu.path}/${name.trim()}`;
+                        await fetch('/api/workspace/file', { 
+                          method: 'PUT', 
+                          headers: { 'Content-Type': 'application/json' }, 
+                          body: JSON.stringify({ path: newDir + '/.gitkeep', content: '' }) 
+                        });
                         refetchTree();
                         setExplorerCtxMenu(null);
                       }} : null,
@@ -1262,7 +1264,11 @@ Follow the @task-play-workflow skill rules. Read the memory bank and related fil
                         if (!newName?.trim() || newName === oldName) return;
                         const dir = parts.slice(0, -1).join('/');
                         const newPath = `${dir}/${newName.trim()}`;
-                        await fetch('/api/workspace/terminal/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command: `mv "${explorerCtxMenu.path}" "${newPath}"`, cwd: projectPath }) });
+                        await fetch('/api/workspace/file', { 
+                          method: 'PATCH', 
+                          headers: { 'Content-Type': 'application/json' }, 
+                          body: JSON.stringify({ action: 'rename', source: explorerCtxMenu.path, destination: newPath }) 
+                        });
                         refetchTree();
                         setExplorerCtxMenu(null);
                       }},
@@ -1273,7 +1279,11 @@ Follow the @task-play-workflow skill rules. Read the memory bank and related fil
                         const base = ext ? oldName.slice(0, -ext.length) : oldName;
                         const newName = `${base}_copy${ext}`;
                         const dir = parts.slice(0, -1).join('/');
-                        await fetch('/api/workspace/terminal/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command: `cp "${explorerCtxMenu.path}" "${dir}/${newName}"`, cwd: projectPath }) });
+                        await fetch('/api/workspace/file', { 
+                          method: 'PATCH', 
+                          headers: { 'Content-Type': 'application/json' }, 
+                          body: JSON.stringify({ action: 'copy', source: explorerCtxMenu.path, destination: `${dir}/${newName}` }) 
+                        });
                         refetchTree();
                         setExplorerCtxMenu(null);
                       }} : null,
@@ -1282,7 +1292,7 @@ Follow the @task-play-workflow skill rules. Read the memory bank and related fil
                       { label: 'Delete', action: async () => {
                         const name = explorerCtxMenu.path.split(/[/\\]/).pop();
                         if (!window.confirm(`Delete "${name}"? This cannot be undone.`)) return;
-                        await fetch('/api/workspace/terminal/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command: explorerCtxMenu.isDir ? `rm -rf "${explorerCtxMenu.path}"` : `rm -f "${explorerCtxMenu.path}"`, cwd: projectPath }) });
+                        await fetch(`/api/workspace/file?path=${encodeURIComponent(explorerCtxMenu.path)}`, { method: 'DELETE' });
                         refetchTree();
                         setExplorerCtxMenu(null);
                       }},

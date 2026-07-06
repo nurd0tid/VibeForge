@@ -9,6 +9,20 @@ import { promisify } from 'util';
 
 const execAsync = promisify(exec);
 
+let _debugLogPath: string | null = null;
+async function debugLog(workspaceRoot: string, ...args: unknown[]) {
+  try {
+    if (!_debugLogPath) {
+      const logDir = path.resolve(workspaceRoot || process.cwd(), '.vibeforge/agent-logs');
+      await fs.mkdir(logDir, { recursive: true });
+      _debugLogPath = path.join(logDir, 'chat_debug.log');
+    }
+    const ts = new Date().toISOString();
+    const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a, null, 2)).join(' ');
+    await fs.appendFile(_debugLogPath, `[${ts}] ${msg}\n`, 'utf-8');
+  } catch {}
+}
+
 async function executeTool(name: string, args: Record<string, string>, projectRoot: string, activeProjectId: string | null): Promise<string> {
   const resolve = (p: string) => path.resolve(projectRoot, p.replace(/^\//, ''));
 
@@ -458,8 +472,11 @@ When you need to use a tool, output the <tool_use> block. The system will execut
           let totalInputTokens = 0;
           let totalOutputTokens = 0;
 
+          await debugLog(workspaceRoot, '>>> STARTING AGENT LOOP', { runId, skill });
+
           while (iteration < MAX_ITERATIONS) {
             iteration++;
+            await debugLog(workspaceRoot, `--- Iteration ${iteration} started ---`);
 
             // Build request body — omit max_tokens if -1 or 0 (= unlimited / provider default)
             const requestBody: Record<string, unknown> = {
@@ -542,8 +559,10 @@ When you need to use a tool, output the <tool_use> block. The system will execut
               }
             );
             const responseText = streamRes.fullText;
+            await debugLog(workspaceRoot, `Iter ${iteration}: responseText length=${responseText.length}, snippet="${responseText.slice(0, 200)}"...`);
             
             if (!responseText.trim()) {
+              await debugLog(workspaceRoot, `Iter ${iteration}: EMPTY RESPONSE — chatMessages.length=${chatMessages.length}`);
               // Empty response from LLM — could be context too long, provider throttling, or bad format
               // Add a status update and try one more time with shorter context
               if (chatMessages.length > 10) {
@@ -568,6 +587,7 @@ When you need to use a tool, output the <tool_use> block. The system will execut
             // Parse any tool calls from the accumulated response
             const toolCalls = parseToolCalls(responseText);
             const inlineToolsExecuted = realtimeToolCount.n;
+            await debugLog(workspaceRoot, `Iter ${iteration}: toolCalls=${toolCalls.length}, inlineExecuted=${inlineToolsExecuted}`);
 
             if (toolCalls.length === 0 && inlineToolsExecuted === 0) {
               const cleanText = responseText
@@ -575,6 +595,7 @@ When you need to use a tool, output the <tool_use> block. The system will execut
                 .replace(/```tool[\s\S]*?```/g, '')
                 .trim();
               fullOutputText = cleanText;
+              await debugLog(workspaceRoot, `Iter ${iteration}: FINAL RESPONSE (no tools) — breaking. length=${cleanText.length}`);
               // Only replace if it's the very first iteration, else append
               emit('content', { delta: cleanText, replace: iteration === 1 });
               break;
@@ -617,12 +638,15 @@ When you need to use a tool, output the <tool_use> block. The system will execut
             }
 
             if (toolResultParts.length > 0) {
+              await debugLog(workspaceRoot, `Iter ${iteration}: user message pushed containing ${toolResultParts.length} tool results`);
               chatMessages.push({
                 role: 'user',
                 content: toolResultParts.join('\n\n'),
               });
             }
           }
+
+          await debugLog(workspaceRoot, `>>> LOOP FINISHED: iterations=${iteration}`);
 
           if (runId) {
             try { await updateRecord('agent_runs', runId, {
@@ -635,8 +659,10 @@ When you need to use a tool, output the <tool_use> block. The system will execut
           }
 
           emit('done', {});
+          await debugLog(workspaceRoot, '>>> emit(done) sent OK');
         } catch (e: unknown) {
           const rawMsg = e instanceof Error ? e.message : String(e);
+          await debugLog(workspaceRoot, '>>> CAUGHT ERROR:', rawMsg, e instanceof Error ? e.stack : '');
           
           try {
             const logDir = path.resolve(workspaceRoot, '.vibeforge/agent-logs');

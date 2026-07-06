@@ -143,7 +143,7 @@ async function readStreamWithEmit(
   let usage: StreamResult['usage'] = undefined;
   let pending = '';
   let insideToolPhase = false;
-  const toolPromises: Promise<void>[] = [];
+  const toolXmlList: string[] = [];
 
   while (true) {
     const { value, done } = await reader.read();
@@ -175,10 +175,7 @@ async function readStreamWithEmit(
             if (before) emitChunk(before);
             
             const toolXml = pending.slice(startIdx, endIdx);
-            if (onToolFound) {
-              const p = onToolFound(toolXml);
-              if (p && typeof p.then === 'function') toolPromises.push(p);
-            }
+            toolXmlList.push(toolXml);
             
             pending = pending.slice(endIdx);
             insideToolPhase = pending.includes('<tool_use>') || pending.includes('<');
@@ -207,7 +204,15 @@ async function readStreamWithEmit(
     }
   }
   
-  await Promise.all(toolPromises);
+  // Execute collected tool calls sequentially (not in parallel) to avoid flooding NocoDB
+  for (const toolXml of toolXmlList) {
+    if (onToolFound) {
+      try {
+        emitChunk('');
+        await onToolFound(toolXml);
+      } catch {}
+    }
+  }
   
   if (pending) {
     const clean = pending.replace(/<tool_use>[\s\S]*?<\/tool_use>/g, '').replace(/<[^>]*>/g, '').trim();

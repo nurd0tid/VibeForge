@@ -417,11 +417,20 @@ export const AiMessageBubble = memo(function AiMessageBubble({ role, content, st
           );
         })()}
 
-        {content && (
-          <div className="px-3 py-2 prose prose-invert prose-ide max-w-none text-[#d4d4d4] [&_code]:text-[#ce9178] [&_pre]:bg-[#1e1e1e] [&_pre]:border [&_pre]:border-[#3a3a3a] [&_h1]:text-[#4ec9b0] [&_h2]:text-[#4ec9b0] [&_h3]:text-[#4ec9b0] [&_blockquote]:border-[#3a3a3a] [&_strong]:text-[#e0e0e0] [&_a]:text-[#4fc1ff] [&_p]:text-[#d4d4d4] [&_li]:text-[#d4d4d4] overflow-hidden break-words">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-          </div>
-        )}
+        {content && (() => {
+          // Strip any raw tool XML that leaked into the content stream
+          const cleanContent = content
+            .replace(/<tool_use>[\s\S]*?<\/tool_use>/g, '')
+            .replace(/<tool_result>[\s\S]*?<\/tool_result>/g, '')
+            .replace(/<\/?tool[^>]*>/g, '')
+            .trim();
+          if (!cleanContent) return null;
+          return (
+            <div className="px-3 py-2 prose prose-invert prose-ide max-w-none text-[#d4d4d4] [&_code]:text-[#ce9178] [&_pre]:bg-[#1e1e1e] [&_pre]:border [&_pre]:border-[#3a3a3a] [&_h1]:text-[#4ec9b0] [&_h2]:text-[#4ec9b0] [&_h3]:text-[#4ec9b0] [&_blockquote]:border-[#3a3a3a] [&_strong]:text-[#e0e0e0] [&_a]:text-[#4fc1ff] [&_p]:text-[#d4d4d4] [&_li]:text-[#d4d4d4] overflow-hidden break-words">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{cleanContent}</ReactMarkdown>
+            </div>
+          );
+        })()}
 
         {steps && steps.length > 0 && (() => {
           const allFinished = steps.every(s => s.type === 'thought' || !!s.toolOutput);

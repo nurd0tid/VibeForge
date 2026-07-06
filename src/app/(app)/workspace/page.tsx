@@ -644,7 +644,9 @@ export default function WorkspacePage() {
                     const toolName = targetStep.toolName || '';
                     if (toolName === 'edit_file' || toolName === 'write_file') {
                       if (cancelDiffAnimationRef.current) { cancelDiffAnimationRef.current(); cancelDiffAnimationRef.current = null; }
-                      const fp = String(targetStep.toolArgs.path);
+                      const rawPath = String(targetStep.toolArgs.path);
+                      const isAbsolute = /^[a-zA-Z]:[/\\]/.test(rawPath) || rawPath.startsWith('/');
+                      const fp = isAbsolute ? rawPath : `${projectPath}/${rawPath}`.replace(/\\/g, '/');
                       const fn = fp.split(/[/\\]/).pop() || 'file';
                       try {
                         const res = await fetch(`/api/workspace/file?path=${encodeURIComponent(fp)}`);

@@ -354,7 +354,7 @@ RULES:
 - Prefer memory_read over read_file for .vibeforge/memory-bank files.
 - If user types UMB, update memory, or sync memory: update all relevant memory files.
 - When you need to create a file, use write_file tool. When you need to edit, use edit_file tool.
-- IMPORTANT: Output your reasoning as normal text FIRST, then output tool_use blocks. Do not mix text inside tool_use blocks.
+- CRITICAL: You MUST output <tool_use> blocks in the SAME response as your reasoning. Do NOT just describe what you will do — actually output the tool call XML. If you say "I will read the file", you must ALSO include <tool_use><name>read_file</name><args>{"path":"..."}</args></tool_use> in the same message. Never end a response with only text describing intent to use a tool without the actual <tool_use> block.
 
 SKILL INSTRUCTIONS:
 ${skill === 'create-task' ? `
@@ -590,13 +590,27 @@ When you need to use a tool, output the <tool_use> block. The system will execut
             await debugLog(workspaceRoot, `Iter ${iteration}: toolCalls=${toolCalls.length}, inlineExecuted=${inlineToolsExecuted}`);
 
             if (toolCalls.length === 0 && inlineToolsExecuted === 0) {
+              // If we are in an early iteration with an active skill that requires tools,
+              // but the LLM wrote only prose (e.g. "I will read the file..."), inject a reminder
+              // and retry rather than breaking — the LLM must actually USE the tools.
+              const TOOL_REQUIRED_SKILLS = ['create-task', 'schedule', 'planning', 'task-play-workflow'];
+              if (iteration <= 2 && skill && TOOL_REQUIRED_SKILLS.includes(skill)) {
+                await debugLog(workspaceRoot, `Iter ${iteration}: LLM described plan but output no tool_use for skill "${skill}". Injecting retry...`);
+                emit('thought', { text: `Retrying: AI described intent but did not call any tools. Prompting to use tools now...` });
+                chatMessages.push({ role: 'assistant', content: responseText });
+                chatMessages.push({
+                  role: 'user',
+                  content: `You described your intent but did not output any <tool_use> block. You MUST immediately output a tool_use block to fulfill the request. Do NOT just describe what you will do — DO it by outputting the <tool_use> XML now. Example:\n<tool_use><name>read_file</name><args>{"path":"path/to/file.md"}</args></tool_use>`,
+                });
+                continue;
+              }
+
               const cleanText = responseText
                 .replace(/<tool_use>[\s\S]*?<\/tool_use>/g, '')
                 .replace(/```tool[\s\S]*?```/g, '')
                 .trim();
               fullOutputText = cleanText;
               await debugLog(workspaceRoot, `Iter ${iteration}: FINAL RESPONSE (no tools) — breaking. length=${cleanText.length}`);
-              // Only replace if it's the very first iteration, else append
               emit('content', { delta: cleanText, replace: iteration === 1 });
               break;
             }

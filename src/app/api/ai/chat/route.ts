@@ -584,8 +584,8 @@ When you need to use a tool, output the <tool_use> block. The system will execut
               .replace(/<tool_result>[\s\S]*?<\/tool_result>/g, '')
               .replace(/```tool[\s\S]*?```/g, '')
               .trim();
-            emit('content', { delta: thoughtText, replace: true });
             if (thoughtText) {
+              emit('content', { delta: thoughtText, replace: true });
               emit('thought', { text: thoughtText });
             }
 

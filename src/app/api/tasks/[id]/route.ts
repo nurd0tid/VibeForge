@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRecord, updateRecord, deleteRecord } from '@/lib/nocodb';
-import { toNocoDBFields, TASK_FIELD_MAP } from '@/lib/nocodb-fields';
+import { toNocoDBFields, fromNocoDBFields, TASK_FIELD_MAP } from '@/lib/nocodb-fields';
 import type { Task } from '@/types';
 
 const TABLE = 'tasks';
@@ -11,8 +11,8 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const record = await getRecord<Task>(TABLE, Number(id));
-    return NextResponse.json(record);
+    const record = await getRecord<Record<string, unknown>>(TABLE, Number(id));
+    return NextResponse.json(fromNocoDBFields<Task>(record, TASK_FIELD_MAP));
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json({ error: message }, { status: 500 });
@@ -27,8 +27,8 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
     const mappedBody = toNocoDBFields(body, TASK_FIELD_MAP);
-    const record = await updateRecord<Task>(TABLE, Number(id), mappedBody);
-    return NextResponse.json(record);
+    const record = await updateRecord<Record<string, unknown>>(TABLE, Number(id), mappedBody);
+    return NextResponse.json(fromNocoDBFields<Task>(record, TASK_FIELD_MAP));
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json({ error: message }, { status: 500 });

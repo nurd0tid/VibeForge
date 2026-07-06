@@ -3,11 +3,25 @@ export function toNocoDBFields(data: Record<string, unknown>, mapping: Record<st
   for (const [key, value] of Object.entries(data)) {
     if (mapping[key]) {
       result[mapping[key]] = value;
-    } else {
-      result[key] = value;
     }
+    // VibeForge design hack: emit original snake_case key as well for schemaless tables
+    result[key] = value;
   }
   return result;
+}
+
+export function fromNocoDBFields<T>(data: Record<string, unknown>, mapping: Record<string, string>): T {
+  const result: Record<string, unknown> = {};
+  const reverseMap = Object.entries(mapping).reduce((acc, [k, v]) => ({ ...acc, [v]: k }), {} as Record<string, string>);
+  
+  for (const [key, value] of Object.entries(data)) {
+    // Also map it back to snake_case so UI reads correctly
+    if (reverseMap[key]) {
+      result[reverseMap[key]] = value;
+    }
+    result[key] = value;
+  }
+  return result as T;
 }
 
 export function getField(obj: Record<string, unknown>, snake: string, title: string): string {

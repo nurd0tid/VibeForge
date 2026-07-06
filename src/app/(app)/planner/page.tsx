@@ -7,54 +7,164 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { CalendarRange, Sparkles, Save, ListTodo, Loader2 } from 'lucide-react';
+import { CalendarRange, Sparkles, Save, ListTodo, Loader2, CalendarClock } from 'lucide-react';
 import { EmptyState } from '@/components/common/EmptyState';
 import { toast } from 'sonner';
+import { useQuery } from '@tanstack/react-query';
+
+interface TaskDef {
+  title: string;
+  description: string;
+  type: 'feature' | 'bug' | 'chore' | 'refactor' | 'docs';
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  estimate_hours: number;
+}
+
+interface PhaseDef {
+  name: string;
+  tasks: TaskDef[];
+}
+
+interface PlanJSON {
+  objective: string;
+  phases: PhaseDef[];
+  risks: string;
+  dependencies: string;
+  estimated_effort: string;
+}
 
 export default function PlannerPage() {
   const hasHydrated = useHasHydrated();
   const { activeProjectId } = useUiStore();
   const [objective, setObjective] = useState('');
   const [planOutput, setPlanOutput] = useState('');
-  const [planData, setPlanData] = useState<{
-    objective: string;
-    steps: string[];
-    risks: string;
-    dependencies: string;
-    estimatedEffort: string;
-  } | null>(null);
+  const [planData, setPlanData] = useState<PlanJSON | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isConvertingTasks, setIsConvertingTasks] = useState(false);
+  const [isConvertingSchedule, setIsConvertingSchedule] = useState(false);
 
-  const handleGeneratePlan = () => {
+  // Fetch Providers to select default/active AI provider
+  const { data: providersData } = useQuery({
+    queryKey: ['providers'],
+    queryFn: async () => {
+      const res = await fetch('/api/providers?limit=100');
+      if (!res.ok) throw new Error('Failed to fetch providers');
+      return res.json();
+    },
+  });
+
+  const allProviders = providersData?.list || [];
+  const activeAiProvider = allProviders[0]; // Fallback to first provider
+
+  const handleGeneratePlan = async () => {
     if (!objective.trim()) {
       toast.error('Please enter an objective first');
       return;
     }
-    
-    setIsGenerating(true);
-    
-    setTimeout(() => {
-      const plan = {
-        objective: objective.trim(),
-        steps: [
-          'Setup & Configuration',
-          'Core Implementation',
-          'Testing & Review',
-          'Deploy & Document',
-        ],
-        risks: 'Scope creep, dependency delays, integration complexity.',
-        dependencies: 'NocoDB, Next.js, Tailwind CSS, existing project infrastructure.',
-        estimatedEffort: '3-5 days',
-      };
+    if (!activeAiProvider) {
+      toast.error('Please connect an AI provider in the Providers page first');
+      return;
+    }
 
-      setPlanData(plan);
-      setPlanOutput(
-        `Objective: ${plan.objective}\n\nSteps:\n${plan.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}\n\nRisks: ${plan.risks}\n\nDependencies: ${plan.dependencies}\n\nEstimated Effort: ${plan.estimatedEffort}`
-      );
+    setIsGenerating(true);
+    setPlanData(null);
+    setPlanOutput('');
+
+    try {
+      const providerId = activeAiProvider.Id;
+      const model = activeAiProvider.default_model || activeAiProvider['Default Model'] || '';
+
+      const res = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [
+            {
+              role: 'user',
+              content: `Create a structured development plan for this objective: ${objective}
+
+Output ONLY a JSON block matching this exact structure:
+{
+  "objective": "...",
+  "phases": [
+    {
+      "name": "Phase 1: Setup & Layout",
+      "tasks": [
+        { "title": "Setup repository", "description": "Initialize Vite project", "type": "chore", "priority": "high", "estimate_hours": 2 }
+      ]
+    }
+  ],
+  "risks": "Scope creep, integration latency",
+  "dependencies": "NocoDB, Next.js",
+  "estimated_effort": "3-5 days"
+}`
+            }
+          ],
+          providerId: providerId.toString(),
+          model,
+          skill: 'planning',
+        }),
+      });
+
+      if (!res.ok || !res.body) throw new Error('Failed to call AI provider');
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let fullContent = '';
+      let buffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() || '';
+        for (const part of parts) {
+          const lines = part.split('\n').map(l => l.trim()).filter(Boolean);
+          const eventLine = lines.find(l => l.startsWith('event:'));
+          const dataLine = lines.find(l => l.startsWith('data:'));
+          if (!eventLine || !dataLine) continue;
+          const eventType = eventLine.replace(/^event:\s*/, '').trim();
+          const dataStr = dataLine.replace(/^data:\s*/, '').trim();
+          if (eventType === 'content') {
+            try {
+              const delta = JSON.parse(dataStr).delta || '';
+              fullContent += delta;
+              setPlanOutput(prev => prev + delta);
+            } catch {}
+          }
+        }
+      }
+
+      const jsonMatch = fullContent.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]) as PlanJSON;
+        setPlanData(parsed);
+        
+        // Re-format visual output
+        let visualText = `Objective: ${parsed.objective}\n\n`;
+        parsed.phases.forEach((p, pi) => {
+          visualText += `[${p.name}]\n`;
+          p.tasks.forEach((t, ti) => {
+            visualText += `  ${pi + 1}.${ti + 1} ${t.title} (${t.estimate_hours}h) - ${t.description}\n`;
+          });
+          visualText += `\n`;
+        });
+        visualText += `Risks: ${parsed.risks}\n`;
+        visualText += `Dependencies: ${parsed.dependencies}\n`;
+        visualText += `Estimated Effort: ${parsed.estimated_effort}`;
+        setPlanOutput(visualText);
+        
+        toast.success('Plan generated successfully');
+      } else {
+        throw new Error('No valid JSON object found in AI response');
+      }
+    } catch (err: any) {
+      toast.error('AI plan generation failed: ' + err.message);
+    } finally {
       setIsGenerating(false);
-      toast.success('Plan generated successfully');
-    }, 1500);
+    }
   };
 
   const handleSavePlan = async () => {
@@ -69,10 +179,10 @@ export default function PlannerPage() {
           task_id: 0,
           title: `Plan: ${planData.objective.slice(0, 80)}`,
           objective: planData.objective,
-          plan_steps: planData.steps.join('\n'),
+          plan_steps: JSON.stringify(planData.phases),
           risks: planData.risks,
           dependencies: planData.dependencies,
-          estimated_effort: planData.estimatedEffort,
+          estimated_effort: planData.estimated_effort,
           created_by_agent: false,
         }),
       });
@@ -85,8 +195,65 @@ export default function PlannerPage() {
     }
   };
 
-  const handleConvertToTasks = () => {
-    toast.info('Convert to Tasks will be available after saving the plan.');
+  const handleConvertToTasks = async () => {
+    if (!activeProjectId || !planData) return;
+    setIsConvertingTasks(true);
+    try {
+      let created = 0;
+      for (const phase of planData.phases) {
+        for (const task of phase.tasks) {
+          const res = await fetch('/api/tasks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              project_id: Number(activeProjectId),
+              title: task.title,
+              description: task.description,
+              type: task.type,
+              priority: task.priority,
+              status: 'todo',
+              estimate_hours: task.estimate_hours,
+            }),
+          });
+          if (res.ok) created++;
+        }
+      }
+      toast.success(`Successfully converted plan into ${created} tasks in NocoDB!`);
+    } catch (err: any) {
+      toast.error('Failed to convert tasks: ' + err.message);
+    } finally {
+      setIsConvertingTasks(false);
+    }
+  };
+
+  const handleConvertToSchedule = async () => {
+    if (!activeProjectId || !planData) return;
+    setIsConvertingSchedule(true);
+    try {
+      let created = 0;
+      // Convert each phase into a schedule item (Day 1 = Phase 1, Day 2 = Phase 2, etc.)
+      for (let i = 0; i < planData.phases.length; i++) {
+        const phase = planData.phases[i];
+        const res = await fetch('/api/schedules', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            project_id: Number(activeProjectId),
+            title: phase.name,
+            day_index: i + 1,
+            description: `Tasks: ${phase.tasks.map(t => t.title).join(', ')}`,
+            expected_output: `Completed tasks for ${phase.name}`,
+            status: 'planned',
+          }),
+        });
+        if (res.ok) created++;
+      }
+      toast.success(`Successfully converted plan into ${created} schedule milestones!`);
+    } catch (err: any) {
+      toast.error('Failed to convert schedule: ' + err.message);
+    } finally {
+      setIsConvertingSchedule(false);
+    }
   };
 
   if (!hasHydrated) return null;
@@ -162,7 +329,7 @@ export default function PlannerPage() {
           </CardHeader>
           <CardContent className="flex-1">
             {planOutput ? (
-              <div className="prose prose-sm dark:prose-invert max-w-none bg-background p-4 rounded-md border min-h-[300px] whitespace-pre-wrap">
+              <div className="prose prose-sm dark:prose-invert max-w-none bg-background p-4 rounded-md border min-h-[300px] whitespace-pre-wrap font-mono text-xs">
                 {planOutput}
               </div>
             ) : (
@@ -185,15 +352,32 @@ export default function PlannerPage() {
                 <><Save className="mr-2 size-4" />Save Plan to NocoDB</>
               )}
             </Button>
-            <Button 
-              variant="outline" 
-              onClick={handleConvertToTasks}
-              disabled={!planOutput || isGenerating}
-              className="w-full"
-            >
-              <ListTodo className="mr-2 size-4" />
-              Convert to Tasks
-            </Button>
+            <div className="grid grid-cols-2 gap-2 w-full">
+              <Button 
+                variant="outline" 
+                onClick={handleConvertToTasks}
+                disabled={!planData || isGenerating || isConvertingTasks}
+                className="w-full text-xs"
+              >
+                {isConvertingTasks ? (
+                  <><Loader2 className="mr-1 size-3.5 animate-spin" />Converting...</>
+                ) : (
+                  <><ListTodo className="mr-1.5 size-3.5" />Convert to Tasks</>
+                )}
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={handleConvertToSchedule}
+                disabled={!planData || isGenerating || isConvertingSchedule}
+                className="w-full text-xs"
+              >
+                {isConvertingSchedule ? (
+                  <><Loader2 className="mr-1 size-3.5 animate-spin" />Converting...</>
+                ) : (
+                  <><CalendarClock className="mr-1.5 size-3.5" />Convert to Schedule</>
+                )}
+              </Button>
+            </div>
           </CardFooter>
         </Card>
       </div>

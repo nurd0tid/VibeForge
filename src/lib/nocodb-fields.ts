@@ -74,12 +74,14 @@ export const TASK_PLAN_FIELD_MAP: Record<string, string> = {
 
 export const SCHEDULE_FIELD_MAP: Record<string, string> = {
   project_id: 'Project ID',
-  name: 'Name',
+  task_id: 'Task ID',
+  plan_id: 'Plan ID',
+  day_index: 'Day Index',
+  scheduled_date: 'Scheduled Date',
+  title: 'Title',
   description: 'Description',
-  cron_expression: 'Cron Expression',
-  is_active: 'Is Active',
-  last_run: 'Last Run',
-  next_run: 'Next Run',
+  expected_output: 'Expected Output',
+  status: 'Status',
 };
 
 export const DAILY_LOG_FIELD_MAP: Record<string, string> = {

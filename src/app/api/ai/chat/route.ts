@@ -105,16 +105,16 @@ async function executeTool(name: string, args: Record<string, string>, projectRo
         const resolvedProjectId = Number(args.project_id || activeProjectId || '1');
         const rawSchedule = {
           project_id: resolvedProjectId,
-          name: args.name,
+          title: args.title || args.name,
           description: args.description || '',
-          cron_expression: args.cron_expression || '',
-          is_active: args.is_active === 'true' || args.is_active === '1' ? true : false,
-          last_run: args.last_run || null,
-          next_run: args.next_run || null
+          expected_output: args.expected_output || '',
+          scheduled_date: args.scheduled_date || '',
+          day_index: args.day_index ? Number(args.day_index) : 1,
+          status: args.status || 'planned',
         };
         const recordData = toNocoDBFields(rawSchedule, SCHEDULE_FIELD_MAP);
         const result = await createRecord<{ Id?: number }>('schedules', recordData);
-        return `Successfully created NocoDB Schedule record (ID: ${result.Id || 'unknown'}, Project ID: ${resolvedProjectId})`;
+        return `Successfully created Schedule item (ID: ${result.Id || 'unknown'}, Title: "${rawSchedule.title}", Project ID: ${resolvedProjectId})`;
       } catch (e: unknown) { return `Error creating NocoDB schedule: ${e instanceof Error ? e.message : String(e)}`; }
     }
     default: return `Unknown tool: ${name}`;
@@ -322,8 +322,8 @@ TOOLS AVAILABLE (use these to interact with the project):
    Format: <tool_use><name>nocodb_create_task</name><args>{"title": "Implement auth", "description": "...", "status": "todo", "priority": "high", "type": "feature", "estimate_hours": "4", "acceptance_criteria": "..."}</args></tool_use>
 
 10. nocodb_create_schedule — Create a schedule record in NocoDB (persists to the /schedule page)
-    Args: name (required), description, cron_expression (e.g. "0 9 * * 1-5"), is_active ("true"/"false"), next_run (ISO date), project_id
-    Format: <tool_use><name>nocodb_create_schedule</name><args>{"name": "Daily standup", "description": "...", "cron_expression": "0 9 * * 1-5", "is_active": "true"}</args></tool_use>
+    Args: title (required), description, expected_output, scheduled_date (ISO date e.g. "2026-07-06"), day_index (number e.g. 1), status ("planned"/"in_progress"/"done"), project_id
+    Format: <tool_use><name>nocodb_create_schedule</name><args>{"title": "Implement core layout", "description": "...", "expected_output": "sidebar and header rendered", "day_index": 1, "status": "planned"}</args></tool_use>
 
 RULES:
 - YOU MUST USE TOOLS to interact with files. NEVER guess or make up file contents from memory.
@@ -341,20 +341,48 @@ SKILL INSTRUCTIONS:
 ${skill === 'create-task' ? `
 ## SKILL: create-task
 You are in task creation mode. When the user references a file with #file.md or provides a plan/epic/description:
-1. Use read_file to read the referenced file.
-2. Parse and break it down into atomic tasks (max 4 hours each).
-3. For each task, call nocodb_create_task with title, description, type, priority, status="todo", estimate_hours, and acceptance_criteria.
+1. Use read_file to read the referenced file (if one is mentioned).
+2. Parse and break it down into atomic tasks (max 4 hours each, ≤ one logical unit of work).
+3. For each task, call nocodb_create_task with: title, description, type (feature/bug/chore), priority (low/medium/high), status="todo", estimate_hours, and acceptance_criteria.
 4. After all tasks are saved, summarize what was created (task count, titles, NocoDB IDs).
 5. Tell the user to check the /tasks Kanban board to see the newly created tasks.
 ` : ''}
 ${skill === 'schedule' ? `
 ## SKILL: schedule
 You are in schedule creation mode. When the user references a file with #file.md or provides a plan:
-1. Use read_file to read the referenced file.
-2. Analyze the content and identify recurring schedules, milestones, or time-based tasks.
-3. For each schedule item, call nocodb_create_schedule with name, description, cron_expression (if recurring), next_run (if one-time), and is_active="true".
-4. After all schedules are saved, summarize what was created (count, names, NocoDB IDs).
-5. Tell the user to check the /schedule page to see the newly created schedules.
+1. Use read_file to read the referenced file (if one is mentioned).
+2. Analyze the content and identify milestones, phases, and time-boxed work.
+3. Assign day indexes (Day 1, Day 2, etc.) or calendar dates to each item.
+4. For each schedule item, call nocodb_create_schedule with: title, description, expected_output, day_index (number), status="planned".
+5. After all schedules are saved, summarize what was created (count, titles, NocoDB IDs).
+6. Tell the user to check the /schedule page to see the newly created schedule items.
+` : ''}
+${skill === 'planning' ? `
+## SKILL: planning
+You are in planning mode. Your job is to take an objective and generate a structured, actionable development plan.
+1. Read the memory bank (memory_list + relevant memory_read) to understand project context.
+2. Clarify scope based on the objective.
+3. Break work into phases (Phase 1: Data layer, Phase 2: UI, Phase 3: Tests).
+4. Break each phase into atomic tasks (max 4 hours each) with effort estimates (S/M/L).
+5. Identify dependencies and blockers.
+6. Output a structured JSON plan in this exact format inside a markdown code block:
+\\\`\\\`\\\`json
+{
+  "objective": "...",
+  "phases": [
+    {
+      "name": "Phase 1: ...",
+      "tasks": [
+        { "title": "...", "description": "...", "type": "feature", "estimate_hours": 2, "priority": "high" }
+      ]
+    }
+  ],
+  "risks": "...",
+  "dependencies": "...",
+  "estimated_effort": "X days"
+}
+\\\`\\\`\\\`
+7. After outputting the plan, ask the user if they want to convert it to tasks or save it as a plan.
 ` : ''}
 
 When you need to use a tool, output the <tool_use> block. The system will execute it and return the result.`;

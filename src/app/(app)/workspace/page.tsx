@@ -24,6 +24,7 @@ import { AiMessageBubble } from './components/AiMessageBubble';
 import { ActiveTodoStrip } from './components/ActiveTodoStrip';
 import { InterruptedTaskBanner } from './components/InterruptedTaskBanner';
 import { ContextUsageBar } from './components/ContextUsageBar';
+import { WorkspaceTaskPanel } from './components/WorkspaceTaskPanel';
 
 // Animates the Monaco DiffEditor — streams content line-by-line into the diff view.
 function startLiveDiffAnimation(
@@ -736,6 +737,62 @@ export default function WorkspacePage() {
     await runAiStream(messagesToRun, skill);
   };
 
+  const handlePlayTask = async (task: import('@/types').Task) => {
+    const { setPlayingTaskId, dequeueTask, addAiMessage } = useWorkspaceStore.getState();
+    setPlayingTaskId(task.Id);
+
+    const prompt = `@task-play-workflow
+
+## Task to Execute
+**Title:** ${task.title}
+**Description:** ${task.description || 'No description provided.'}
+**Type:** ${task.type || 'feature'}
+**Priority:** ${task.priority || 'medium'}
+**Acceptance Criteria:** ${task.acceptance_criteria || 'None specified.'}
+**Related Files:** ${task.related_files || 'None.'}
+**Estimated Hours:** ${task.estimate_hours ?? 'Not specified.'}
+
+Follow the @task-play-workflow skill rules. Read the memory bank and related files first, then plan and execute this task. After completion, update the task status and memory bank.`;
+
+    const currentMsgs = useWorkspaceStore.getState().aiMessages;
+    const newMsgs = [...currentMsgs, { role: 'user' as const, content: prompt }];
+    addAiMessage({ role: 'user', content: prompt });
+
+    try {
+      await runAiStream(newMsgs, 'task-play-workflow');
+      await fetch(`/api/tasks/${task.Id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ Status: 'done' }),
+      }).catch(() => {});
+    } finally {
+      dequeueTask(task.Id);
+      setPlayingTaskId(null);
+      const { taskQueue: remaining } = useWorkspaceStore.getState();
+      if (remaining.length > 0) {
+        const nextTask = remaining[0];
+        await handlePlayTask(nextTask);
+      }
+    }
+  };
+
+  const handlePlayAll = async (tasks: import('@/types').Task[]) => {
+    if (tasks.length === 0) return;
+    const { setTaskQueue, setPlayingTaskId } = useWorkspaceStore.getState();
+    setTaskQueue(tasks.slice(1));
+    setPlayingTaskId(tasks[0].Id);
+    await handlePlayTask(tasks[0]);
+  };
+
+  const handleStopTask = () => {
+    const { clearTaskQueue, setPlayingTaskId } = useWorkspaceStore.getState();
+    if (globalAiAbortControllerRef.current) {
+      globalAiAbortControllerRef.current.abort();
+    }
+    setPlayingTaskId(null);
+    clearTaskQueue();
+  };
+
   const handleSendAiMessage = async () => {
     if (!aiInput.trim()) return;
     const userMsg = aiInput.trim();
@@ -1010,14 +1067,11 @@ export default function WorkspacePage() {
         return <GitSourceControl projectPath={projectPath} defaultBranch={projectDefaultBranch} />;
       case 'tasks':
         return (
-          <div className="flex flex-col h-full bg-[#252526]">
-            <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-[#bbbbbb] border-b border-[#1e1e1e]">
-              Tasks
-            </div>
-            <div className="flex-1 p-3 text-xs text-[#666]">
-              No active tasks. Create a task from the Tasks page.
-            </div>
-          </div>
+          <WorkspaceTaskPanel 
+            onPlayTask={handlePlayTask}
+            onPlayAll={handlePlayAll}
+            onStop={handleStopTask}
+          />
         );
     }
   };

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { AgentTodoList, TodoStatus } from '@/types';
+import type { AgentTodoList, TodoStatus, Task } from '@/types';
 import { saveSessionsToIDB, deleteSessionFromIDB } from '@/lib/session-storage';
 
 interface OpenFile {
@@ -60,6 +60,9 @@ interface WorkspaceState {
   pendingDiffs: Record<string, { original: string; modified: string }>;
   expandedFolders: Record<string, boolean>;
 
+  taskQueue: Task[];
+  playingTaskId: number | null;
+
   openFile: (path: string, name: string, content: string) => void;
   closeFile: (path: string) => void;
   closeAllFiles: () => void;
@@ -93,6 +96,10 @@ interface WorkspaceState {
   clearPendingDiff: (path: string) => void;
   toggleFolder: (path: string, expanded: boolean) => void;
   collapseAllFolders: () => void;
+  setTaskQueue: (tasks: Task[]) => void;
+  setPlayingTaskId: (id: number | null) => void;
+  dequeueTask: (id: number) => void;
+  clearTaskQueue: () => void;
 }
 
 const INITIAL_MESSAGES: AiMessage[] = [
@@ -120,6 +127,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       isAiPanelOpen: true,
       pendingDiffs: {},
       expandedFolders: {},
+      taskQueue: [],
+      playingTaskId: null,
 
       openFile: (path, name, content) => {
         const existing = get().openFiles.find((f) => f.path === path);
@@ -375,6 +384,18 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       collapseAllFolders: () => {
         set({ expandedFolders: {} });
       },
+
+      setTaskQueue: (tasks) => set({ taskQueue: tasks }),
+
+      setPlayingTaskId: (id) => set({ playingTaskId: id }),
+
+      dequeueTask: (id) => {
+        set((state) => ({
+          taskQueue: state.taskQueue.filter((t) => t.Id !== id),
+        }));
+      },
+
+      clearTaskQueue: () => set({ taskQueue: [], playingTaskId: null }),
     }),
     {
       name: 'vibeforge-workspace',

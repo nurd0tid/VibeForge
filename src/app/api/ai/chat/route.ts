@@ -83,7 +83,7 @@ async function executeTool(name: string, args: Record<string, string>, projectRo
     }
     case 'nocodb_create_task': {
       try {
-        const resolvedProjectId = args.project_id || activeProjectId || '1';
+        const resolvedProjectId = Number(args.project_id || activeProjectId || '1');
         const rawTask = {
           project_id: resolvedProjectId,
           title: args.title,
@@ -91,8 +91,8 @@ async function executeTool(name: string, args: Record<string, string>, projectRo
           status: args.status || 'todo',
           priority: args.priority || 'medium',
           type: args.type || 'feature',
-          estimate_days: args.estimate_days || null,
-          estimate_hours: args.estimate_hours || null,
+          estimate_days: args.estimate_days ? Number(args.estimate_days) : null,
+          estimate_hours: args.estimate_hours ? Number(args.estimate_hours) : null,
           acceptance_criteria: args.acceptance_criteria || ''
         };
         const recordData = toNocoDBFields(rawTask, TASK_FIELD_MAP);
@@ -102,7 +102,7 @@ async function executeTool(name: string, args: Record<string, string>, projectRo
     }
     case 'nocodb_create_schedule': {
       try {
-        const resolvedProjectId = args.project_id || activeProjectId || '1';
+        const resolvedProjectId = Number(args.project_id || activeProjectId || '1');
         const rawSchedule = {
           project_id: resolvedProjectId,
           name: args.name,

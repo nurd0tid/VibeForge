@@ -3,8 +3,9 @@ export function toNocoDBFields(data: Record<string, unknown>, mapping: Record<st
   for (const [key, value] of Object.entries(data)) {
     if (mapping[key]) {
       result[mapping[key]] = value;
+    } else {
+      result[key] = value;
     }
-    result[key] = value;
   }
   return result;
 }

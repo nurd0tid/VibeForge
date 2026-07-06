@@ -625,7 +625,9 @@ export default function WorkspacePage() {
                 const argHint = data.args?.path || data.args?.command || '';
                 setAgentStatusText(`Running: ${data.name}${argHint ? ' ' + argHint : ''}`.slice(0, 80));
                 if ((data.name === 'edit_file' || data.name === 'write_file') && data.args?.path) {
-                  const _fp = String(data.args.path);
+                  const rawFp = String(data.args.path);
+                  const isAbs = /^[a-zA-Z]:[/\\]/.test(rawFp) || rawFp.startsWith('/');
+                  const _fp = isAbs ? rawFp : `${projectPath}/${rawFp}`.replace(/\\/g, '/');
                   const _fn = _fp.split(/[/\\]/).pop() || 'file';
                   if (data.name === 'write_file') {
                     useWorkspaceStore.getState().openFile(_fp, _fn, '');
